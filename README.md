@@ -23,9 +23,11 @@ docker compose exec api python -m src.etl.seed --rows 5000
 #    - API (Swagger):      http://localhost:8000/docs
 ```
 
-Para usar **dados reais** do DATASUS no lugar do seed: baixe o CSV de
-[SRAG 2021-2024](https://opendatasus.saude.gov.br/dataset/srag-2021-a-2024) e rode
-`python -m src.etl.load` apontando para o arquivo (ver `src/etl/load.py::run_etl`).
+Para usar **dados reais** do DATASUS (SRAG 2024, ~268 mil casos) no lugar do seed:
+
+```bash
+docker compose exec api python -m src.etl.load --year 2024   # baixa (~194MB) e carrega em chunks
+```
 
 ### Sem Docker (venv)
 ```bash

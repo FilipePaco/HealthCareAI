@@ -12,7 +12,8 @@
   `docker compose up` (db + api + streamlit). (decisão §16)
 
 ## Fase 1 — Dados / ETL (D1 tarde – D2)
-- [ ] T1.1 — Baixar CSV do DATASUS e o **dicionário de dados**; mapear colunas das 4 métricas. (R1.1)
+- [x] T1.1 — `etl/download.py` baixa o CSV real do DATASUS (2024, 194MB) + ETL em chunks; 267.692
+  linhas carregadas. Dicionário e colunas mapeados em `data-and-metrics.md`. (R1.1)
 - [x] T1.2 — `etl/clean.py`: seleção de colunas, parsing de datas, regras de ausência/inválidos
   documentadas, **remoção de identificadores**. (R1.2, R1.3, R1.4)
 - [x] T1.3 — `db/models.py` + `etl/load.py`: carga idempotente em `srag_cases` + views diária/mensal. (R1.5)

@@ -7,7 +7,7 @@ Decisões de stack travadas para a PoC. Justificativas detalhadas estão em
 |---|---|---|
 | Linguagem | Python 3.11+ | Ecossistema GenAI; exigido no desafio |
 | Orquestração do agente | **LangGraph** | Grafo de estado explícito → rastreabilidade/auditoria (P2) |
-| LLM (default) | **Gemini 2.5 Flash** via `init_chat_model` | Free tier generoso + function calling; abstraído (P8) |
+| LLM (default) | **Gemini 2.5 Flash-Lite** via `init_chat_model` | Free tier com cota diária maior que o 2.5-flash (que é 20 req/dia); abstraído (P8) |
 | Banco de dados | **PostgreSQL** (Railway) | Tool SQL parametrizada; separa ETL de runtime (P6) |
 | Busca de notícias | **Tavily** (tool) | API de busca desenhada para agentes, retorna fonte+data |
 | Embeddings | **Gemini `gemini-embedding-001`** (via abstração) | RAG sobre notícias; mesmo provedor do chat |

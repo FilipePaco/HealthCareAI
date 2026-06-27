@@ -54,5 +54,11 @@ def gather_relevant_news(
     articles = search_news(search_query or scenario_query, max_results=max_results)
     if not articles:
         return []
-    store = build_index(articles)
-    return retrieve(store, scenario_query, k=k)
+    try:
+        store = build_index(articles)
+        return retrieve(store, scenario_query, k=k)
+    except Exception:  # noqa: BLE001 - embeddings indisponíveis: usa artigos crus (sem ranqueamento)
+        return [
+            {"content": a.content, "title": a.title, "url": a.url, "date": a.date}
+            for a in articles[:k]
+        ]

@@ -1,3 +1,6 @@
+# Dados brutos do DATASUS (grandes; baixados via src/etl/download.py)
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

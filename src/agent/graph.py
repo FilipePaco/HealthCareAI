@@ -49,8 +49,13 @@ def _news_node(trail: AuditTrail):
         except Exception as exc:  # noqa: BLE001
             query = _DEFAULT_QUERY
             trail.record("formulate_query.error", {"error": str(exc), "fallback": query})
+        scenario = scenario_text(metrics)
         try:
-            news = gather_relevant_news(scenario_query=scenario_text(metrics), search_query=query, k=4)
+            news = gather_relevant_news(scenario_query=scenario, search_query=query, k=4)
+            if not news and query != _DEFAULT_QUERY:
+                # agência: refina a busca uma vez com termos amplos (R4.5)
+                news = gather_relevant_news(scenario_query=scenario, search_query=_DEFAULT_QUERY, k=4)
+                trail.record("gather_news.retry", {"search_query": _DEFAULT_QUERY, "count": len(news)})
             trail.record("gather_news", {"count": len(news), "sources": [n.get("url") for n in news]})
         except Exception as exc:  # noqa: BLE001 - falha de busca/embeddings cai no fallback (R4.4)
             news = []

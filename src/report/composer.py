@@ -49,7 +49,8 @@ def formulate_query(metrics: dict) -> str:
     resp = get_chat().invoke(
         [SystemMessage(SYSTEM_QUERY), HumanMessage(scenario_text(metrics))]
     )
-    query = (resp.content or "").strip().strip('"')
+    raw = (resp.content or "").strip().strip('"')
+    query = raw.splitlines()[0].strip() if raw else ""
     return query[:200] or "SRAG síndrome respiratória aguda grave notícias Brasil"
 
 

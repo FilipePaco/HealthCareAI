@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # LLM (provider-agnostic, P8)
     llm_provider: str = "google_genai"
-    llm_model: str = "gemini-2.5-flash"
+    llm_model: str = "gemini-2.5-flash-lite"
     google_api_key: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None

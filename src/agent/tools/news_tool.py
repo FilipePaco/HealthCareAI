@@ -18,20 +18,24 @@ class Article:
     content: str
 
 
-def search_news(query: str, max_results: int = 6, days: int | None = None) -> list[Article]:
-    """Busca notícias recentes. Lista vazia se não houver chave ou em caso de falha (R4.4)."""
+def search_news(
+    query: str, max_results: int = 6, days: int | None = None, topic: str = "general"
+) -> list[Article]:
+    """Busca notícias recentes. Lista vazia se não houver chave ou em caso de falha (R4.4).
+
+    `topic="general"` dá melhor relevância para o tema de saúde do que o índice "news"
+    (que tende a casar termos genéricos como "grave"). A janela de recência só se aplica a "news".
+    """
     if not settings.tavily_api_key or "your-" in settings.tavily_api_key:
         return []
     try:
         from tavily import TavilyClient
 
         client = TavilyClient(api_key=settings.tavily_api_key)
-        resp = client.search(
-            query=query,
-            topic="news",
-            max_results=max_results,
-            days=days or settings.news_recency_days,
-        )
+        kwargs: dict = {"query": query, "max_results": max_results, "topic": topic}
+        if topic == "news":
+            kwargs["days"] = days or settings.news_recency_days
+        resp = client.search(**kwargs)
     except Exception:  # noqa: BLE001 - qualquer falha de rede/quota cai no fallback
         return []
 
