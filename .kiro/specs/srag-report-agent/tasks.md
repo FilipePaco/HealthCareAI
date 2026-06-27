@@ -15,14 +15,14 @@
 - [ ] T1.1 — Baixar CSV do DATASUS e o **dicionário de dados**; mapear colunas das 4 métricas. (R1.1)
 - [x] T1.2 — `etl/clean.py`: seleção de colunas, parsing de datas, regras de ausência/inválidos
   documentadas, **remoção de identificadores**. (R1.2, R1.3, R1.4)
-- [ ] T1.3 — `db/models.py` + `etl/load.py`: carga idempotente em `srag_cases` + views diária/mensal. (R1.5)
+- [x] T1.3 — `db/models.py` + `etl/load.py`: carga idempotente em `srag_cases` + views diária/mensal. (R1.5)
 - [x] T1.4 — Testes da ETL com linhas sujas sintéticas (8 casos, `tests/test_clean.py` + `TEST_PLAN.md`). (estratégia de testes §5)
 
 ## Fase 2 — Métricas e gráficos determinísticos (D2 – D3 manhã)
-- [ ] T2.1 — `db/queries.py`: 4 queries parametrizadas (aumento, mortalidade, UTI, vacinação) +
-  whitelist. (R2.1–R2.5, R7.1)
-- [ ] T2.2 — Testes das métricas com dados sintéticos de resultado conhecido. (R2.5)
-- [ ] T2.3 — Caso "sem dados" → nulo explícito com justificativa. (R2.6)
+- [x] T2.1 — `db/queries.py`: 4 queries parametrizadas (aumento, mortalidade, UTI, vacinação) +
+  whitelist + séries diária/mensal. (R2.1–R2.5, R7.1)
+- [x] T2.2 — Testes das métricas com dados sintéticos de resultado conhecido (integração c/ Postgres). (R2.5)
+- [x] T2.3 — Caso "sem dados" → nulo explícito (sem divisão por zero). (R2.6)
 - [ ] T2.4 — `agent/tools/chart_tool.py`: gráfico diário 30d e mensal 12m. (R3.1–R3.3)
 
 ## Fase 3 — Notícias + governança (D3)

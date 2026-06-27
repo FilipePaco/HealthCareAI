@@ -25,9 +25,22 @@
 | `test_cleaning_report_counts` | O CleaningReport reporta rows_in/rows_out e contagens coerentes | R1.3 |
 | `test_idempotent_on_clean_input` | Reaplicar clean em dados já limpos não altera o resultado | R1.5 |
 
+### `src/db/queries.py` + `src/etl/load.py` — métricas e carga (Fase 1/2) — *integração c/ Postgres*
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_taxa_mortalidade_conhecida` | CFR = óbitos / desfechos conhecidos, valor exato | R2.2 / §4.2 |
+| `test_taxa_ocupacao_uti_conhecida` | UTI=1 sobre internados (hospital=1, uti∈{1,2}), valor exato | R2.3 / §4.3 |
+| `test_taxa_vacinacao_conhecida` | vacina_cov=1 sobre conhecidos, valor exato | R2.4 / §4.4 |
+| `test_taxa_aumento_casos_janelas` | Janelas half-open de N dias; (rec−ant)/ant×100 | R2.1 / §4.1 |
+| `test_metrica_sem_dados_retorna_none` | Denominador 0 → valor None (sem divisão por zero) | R2.6 |
+| `test_series_diaria_e_mensal` | Séries dos últimos 30d/12m a partir das views | R3.1–R3.3 |
+| `test_whitelist_rejeita_metrica_desconhecida` | `run_metric` com nome fora da whitelist → ValueError | R7.1 |
+| `test_carga_idempotente` | Recarregar o mesmo dado não duplica linhas | R1.5 |
+
+> Os testes de integração usam Postgres (docker compose `db`). Se o banco estiver indisponível,
+> são automaticamente **pulados** (skip) — a suíte unitária pura segue rodando.
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
-- `src/db/queries.py`: cada métrica com dados sintéticos de resultado conhecido (R2.x); rejeição de
-  query fora da whitelist (R7.1).
 - `src/agent/rag.py`: retrieve top-k retorna os trechos mais relevantes (R4.6).
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).
 - `src/api/security.py`: request sem API key -> 401; excesso -> 429 (R7.4, R7.5).

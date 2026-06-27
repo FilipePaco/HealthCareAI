@@ -145,6 +145,10 @@ def clean(df: pd.DataFrame, today: object = None) -> tuple[pd.DataFrame, Cleanin
     report = CleaningReport(rows_in=len(df))
 
     df = select_columns(df)
+    if "DT_SIN_PRI" not in df.columns:
+        # Sem a data epidemiológica primária não há caso utilizável (entrada vazia ou coluna ausente).
+        report.dropped_missing_sin_pri = report.rows_in
+        return df.iloc[0:0].copy(), report
     df = parse_dates(df, report)
     df = apply_date_bounds(df, report, ref_today)
     df = apply_interna_rule(df, report)
