@@ -11,6 +11,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.engine import Engine
 
+from src.agent.graph import generate_report
 from src.agent.tools import chart_tool
 from src.api.security import require_api_key
 from src.db import queries as q
@@ -80,25 +81,8 @@ def chart_monthly() -> Response:
 
 @router.post("/reports", dependencies=[Depends(require_api_key)])
 def create_report() -> dict:
-    eng = engine()
-    init_audit(eng)
-    trail = AuditTrail(eng)
-    with eng.connect() as conn:
-        ref = q.get_data_ref(conn)
-        metrics_out = _all_metrics(conn, ref)
-        daily = q.serie_diaria(conn, ref) if ref else []
-        monthly = q.serie_mensal(conn, ref) if ref else []
-    trail.record("metrics", metrics_out)
-    trail.record("series", {"daily_points": len(daily), "monthly_points": len(monthly)})
-    return {
-        "report_id": trail.report_id,
-        "data_ref": ref,
-        "metrics": metrics_out,
-        "charts": {"daily": "/charts/daily.png", "monthly": "/charts/monthly.png"},
-        "commentary": None,  # preenchido pelo agente (Tavily + LLM)
-        "sources": [],
-        "disclaimer": DISCLAIMER,
-    }
+    """Roda o agente LangGraph: métricas + notícias(RAG) + comentário com grounding."""
+    return generate_report(engine())
 
 
 @router.get("/audit/{report_id}", dependencies=[Depends(require_api_key)])

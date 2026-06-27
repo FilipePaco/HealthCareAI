@@ -74,8 +74,14 @@
 | `test_rag_empty_without_articles` | Sem artigos → retrieve vazio (fallback) | R4.4 | não |
 | `test_chat_smoke` | `get_chat().invoke` responde (LLM acessível) | P8 | Gemini |
 
+### `src/report/composer.py` + `src/agent/graph.py` — composição + grafo (Fase 4)
+| Teste | O que valida | Ref | Rede? |
+|---|---|---|---|
+| `test_enforce_grounding_drops_unlisted_sources` | Fonte fora das notícias recuperadas é removida | R5.4 | não |
+| `test_generate_report_real` | Grafo ponta a ponta: comentário por métrica (4), síntese, fontes só de notícias, disclaimer | R5.1–R5.6 | DB+Gemini+Tavily |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
-- `src/agent/graph.py` + `report/composer.py`: comentário por métrica com grounding; afirmação sem
-  fonte é descartada/marcada (R5.4, R5.6).
+- `src/report/pdf.py`: export do relatório em PDF (R8.2).
+- `app_streamlit.py`: cliente consumindo a API.
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).
 - `src/api/security.py`: request sem API key -> 401; excesso -> 429 (R7.4, R7.5).

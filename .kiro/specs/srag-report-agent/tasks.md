@@ -32,15 +32,15 @@
 
 ## Fase 4 — Agente orquestrador (D3 tarde – D4)
 - [x] T4.1 — `agent/llm.py` provider-agnostic (`init_chat_model` + embeddings). (P8/ADR-04)
-- [ ] T4.2 — `agent/state.py` + `agent/graph.py`: nós gather_metrics → charts → news(+RAG) → compose;
-  agência do LLM ao formular/refinar termos de busca no nó de notícias. (R5.1, R4.5)
-- [ ] T4.3 — `agent/prompts.py` + `report/composer.py`: explicação **por métrica** + síntese, com
+- [x] T4.2 — `agent/state.py` + `agent/graph.py`: nós gather_metrics → news(+RAG) → compose;
+  agência do LLM ao formular os termos de busca no nó de notícias. (R5.1, R4.5)
+- [x] T4.3 — `agent/prompts.py` + `report/composer.py`: explicação **por métrica** + síntese, com
   **grounding** e disclaimer. (R5.2–R5.6)
-- [ ] T4.4 — Teste de grounding (afirmação sem fonte é descartada/marcada). (R5.4)
+- [x] T4.4 — Teste de grounding (fonte fora das notícias é descartada). (R5.4)
 
 ## Fase 5 — API + interface (D4)
-- [~] T5.1 — `api/main.py` + `POST /reports` + `/charts/*.png` (parte de dados pronta; comentário do
-  LLM e `GET /reports/{id}` com persistência entram com o agente). (R8.1)
+- [x] T5.1 — `api/main.py` + `POST /reports` (roda o agente: comentário + fontes) + `/charts/*.png`.
+  `GET /reports/{id}` com persistência do relatório fica como opcional (o trilho vai por `/audit/{id}`). (R8.1)
 - [ ] T5.2 — `report/pdf.py` + `GET /reports/{id}/pdf`. (R8.2)
 - [x] T5.3 — `GET /metrics`, `GET /data/daily`, `GET /data/monthly`, `GET /audit/{id}`. (R8.3, R6.3)
 - [x] T5.5 — `api/security.py`: middleware API key (`X-API-Key`) + rate limiting (slowapi) + CORS. (R7.4–R7.7)

@@ -1,0 +1,63 @@
+"""Composição do relatório: comentário por métrica com grounding obrigatório (R5.2–R5.6).
+
+O LLM produz saída estruturada (Pydantic). Em seguida o grounding é *forçado* em código:
+qualquer fonte citada que não esteja entre as notícias fornecidas é removida (R5.4) — o modelo
+não consegue "inventar" uma fonte que sobreviva à verificação.
+"""
+from __future__ import annotations
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+
+from src.agent.llm import get_chat
+from src.agent.prompts import (
+    SYSTEM_COMPOSER,
+    SYSTEM_QUERY,
+    composer_user_prompt,
+    scenario_text,
+)
+
+
+class MetricComment(BaseModel):
+    metric: str = Field(description="nome da métrica")
+    explanation: str = Field(description="explicação contextual ancorada no valor e nas notícias")
+    sources: list[str] = Field(default_factory=list, description="URLs das notícias citadas")
+
+
+class ReportCommentary(BaseModel):
+    per_metric: list[MetricComment] = Field(default_factory=list)
+    synthesis: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
+def enforce_grounding(commentary: ReportCommentary, allowed_urls: set[str]) -> ReportCommentary:
+    """Mantém apenas fontes que estão entre as notícias recuperadas (R5.4)."""
+
+    def keep(urls: list[str]) -> list[str]:
+        return [u for u in urls if u in allowed_urls]
+
+    commentary.per_metric = [
+        MetricComment(metric=c.metric, explanation=c.explanation, sources=keep(c.sources))
+        for c in commentary.per_metric
+    ]
+    commentary.sources = keep(commentary.sources)
+    return commentary
+
+
+def formulate_query(metrics: dict) -> str:
+    """Agência: o LLM formula os termos de busca a partir do cenário (R4.5)."""
+    resp = get_chat().invoke(
+        [SystemMessage(SYSTEM_QUERY), HumanMessage(scenario_text(metrics))]
+    )
+    query = (resp.content or "").strip().strip('"')
+    return query[:200] or "SRAG síndrome respiratória aguda grave notícias Brasil"
+
+
+def compose_commentary(metrics: dict, news: list[dict]) -> ReportCommentary:
+    """Gera o comentário por métrica + síntese, com grounding forçado."""
+    allowed = {n["url"] for n in news if n.get("url")}
+    chat = get_chat().with_structured_output(ReportCommentary)
+    result = chat.invoke(
+        [SystemMessage(SYSTEM_COMPOSER), HumanMessage(composer_user_prompt(metrics, news))]
+    )
+    return enforce_grounding(result, allowed)
