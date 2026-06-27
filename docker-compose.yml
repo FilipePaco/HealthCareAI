@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: srag
       POSTGRES_DB: srag
     ports:
-      - "5432:5432"
+      - "5433:5432"   # host 5433 (evita conflito com Postgres local na 5432); app usa db:5432 interno
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
