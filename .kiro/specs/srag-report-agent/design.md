@@ -98,7 +98,8 @@ cota), o nó **degrada** para a busca determinística (query formulada/padrão) 
 O `gather_news` não joga todos os resultados crus no prompt. Ele monta um **RAG efêmero por
 requisição**: (1) os trechos retornados pelo Tavily são **embeddados** (embeddings do provedor, ex.
 Gemini `text-embedding`), (2) carregados num **`InMemoryVectorStore`** (LangChain, em memória, sem
-infra persistente), (3) recupera-se o **top-k** mais relevante ao cenário das métricas. O índice é
+infra persistente), (3) recupera-se o **top-k** (configurável, `NEWS_RETRIEVE_K`) mais relevante ao cenário das
+métricas — um k maior dá mais diversidade temática e aumenta a chance de cada métrica ter lastro. O índice é
 **reconstruído a cada relatório e descartado** — adequado a notícia efêmera/tempo real e sem custo de
 manter um vector DB.
 

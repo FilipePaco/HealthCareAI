@@ -59,7 +59,9 @@ agente embasados em notícias em tempo real, com rastreabilidade completa das de
 - **R4.5** *(Event-driven)* Quando buscar notícias, o agente deve usar uma **ferramenta de busca
   chamável pelo LLM** (*tool-calling*): o modelo **formula a query** a partir do cenário das métricas e
   **decide, em um laço de raciocínio, se refina e repete a busca**, até um limite configurável de
-  iterações (agência restrita ao nó de notícias — ADR-09/ADR-11).
+  iterações (agência restrita ao nó de notícias — ADR-09/ADR-11). O agente deve procurar **cobrir as
+  quatro dimensões do relatório** (tendência de casos, mortalidade, ocupação de UTI e vacinação) para
+  ampliar o lastro noticioso por métrica.
 - **R4.6** *(Ubiquitous)* O sistema deve **vetorizar (embeddings)** os trechos de notícia retornados,
   indexá-los em um vector store **em memória** e recuperar o **top-k** mais relevante ao cenário antes
   de embasar os comentários (RAG efêmero, reconstruído por requisição).

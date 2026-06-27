@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     # Agência de notícias (ADR-11): limite do laço de tool-calling
     news_agent_max_iters: int = 3
+    # Top-k de notícias recuperadas pelo RAG (mais diversidade → mais métricas com lastro)
+    news_retrieve_k: int = 6
 
     # Observabilidade de custo (P9/ADR-12) — tarifas de referência (estimativa), em USD.
     # Defaults ~ Gemini 2.5 Flash-Lite; ajuste por env se trocar de modelo/provedor.

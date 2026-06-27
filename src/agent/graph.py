@@ -17,6 +17,7 @@ from src.agent.news_agent import DEFAULT_QUERY, run_news_agent
 from src.agent.prompts import scenario_text
 from src.agent.rag import gather_relevant_news
 from src.agent.state import ReportState
+from src.config import settings
 from src.db import queries as q
 from src.db.reports_store import init_reports, save_report
 from src.governance.audit import AuditTrail, init_audit
@@ -52,10 +53,11 @@ def _fallback_news(metrics: dict, trail: AuditTrail, usage: UsageTracker) -> lis
         query = DEFAULT_QUERY
         trail.record("news_fallback.formulate_query.error", {"error": str(exc), "fallback": query})
     scenario = scenario_text(metrics)
-    news = gather_relevant_news(scenario_query=scenario, search_query=query, k=4)
+    k = settings.news_retrieve_k
+    news = gather_relevant_news(scenario_query=scenario, search_query=query, k=k)
     usage.record_search(1)
     if not news and query != DEFAULT_QUERY:
-        news = gather_relevant_news(scenario_query=scenario, search_query=DEFAULT_QUERY, k=4)
+        news = gather_relevant_news(scenario_query=scenario, search_query=DEFAULT_QUERY, k=k)
         usage.record_search(1)
         trail.record("news_fallback.retry", {"search_query": DEFAULT_QUERY, "count": len(news)})
     trail.record("news_fallback.gather", {"count": len(news), "sources": [n.get("url") for n in news]})
@@ -66,7 +68,7 @@ def _news_node(trail: AuditTrail, usage: UsageTracker):
     def node(state: ReportState) -> dict:
         metrics = state["metrics"]
         try:  # agência real: laço de tool-calling (ADR-11)
-            news = run_news_agent(metrics, trail, usage, k=4)
+            news = run_news_agent(metrics, trail, usage, k=settings.news_retrieve_k)
         except Exception as exc:  # noqa: BLE001 - tool-calling indisponível: degrada (R4.7/R4.4)
             trail.record("news_agent.error", {"error": str(exc)})
             try:

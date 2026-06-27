@@ -39,6 +39,7 @@ RATE_LIMIT=30/minute             # limite por cliente (slowapi)
 REPORT_INCREASE_WINDOW_DAYS=14   # limiares parametrizados (P7)
 NEWS_RECENCY_DAYS=30
 NEWS_AGENT_MAX_ITERS=3           # nº máx. de iterações do laço de tool-calling de notícias (ADR-11)
+NEWS_RETRIEVE_K=6                # top-k de notícias recuperadas pelo RAG (cobertura por métrica)
 LLM_INPUT_COST_PER_1M=0.10       # tarifa estimada USD / 1M tokens de entrada (P9)
 LLM_OUTPUT_COST_PER_1M=0.40      # tarifa estimada USD / 1M tokens de saída
 TAVILY_COST_PER_SEARCH=0.008     # tarifa estimada USD / busca (free tier = 0)
