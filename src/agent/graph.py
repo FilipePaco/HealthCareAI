@@ -11,13 +11,13 @@ from dataclasses import asdict
 from langgraph.graph import END, StateGraph
 from sqlalchemy.engine import Engine
 
+from src.agent.prompts import scenario_text
 from src.agent.rag import gather_relevant_news
 from src.agent.state import ReportState
 from src.db import queries as q
 from src.db.reports_store import init_reports, save_report
 from src.governance.audit import AuditTrail, init_audit
 from src.report.composer import compose_commentary, formulate_query
-from src.agent.prompts import scenario_text
 
 DISCLAIMER = "PoC de caráter educacional — não constitui orientação médica."
 

@@ -48,7 +48,7 @@ if report:
     st.caption(f"Relatório `{report['report_id']}` — data de referência {report.get('data_ref')}")
 
     cols = st.columns(len(report.get("metrics", {})) or 1)
-    for col, (name, m) in zip(cols, report.get("metrics", {}).items()):
+    for col, (name, m) in zip(cols, report.get("metrics", {}).items(), strict=False):
         valor = "N/D" if m.get("value") is None else f"{m['value']}%"
         col.metric(METRIC_LABELS.get(name, name), valor)
 

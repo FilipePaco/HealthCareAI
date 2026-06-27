@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine

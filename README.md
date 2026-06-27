@@ -43,8 +43,10 @@ pytest                                      # testes (integração pula sem Post
 > As chamadas protegidas exigem o header `X-API-Key` (valor de `API_KEY`). O Streamlit já o envia.
 
 ## Status
-🛠️ **Em implementação.** Núcleo funcional: ETL, métricas, gráficos, agente (LangGraph + RAG),
-auditoria, API e UI. Pendentes: dados reais do DATASUS em produção e deploy no Railway (ver `tasks.md`).
+✅ **Funcional.** Solução completa: ETL com **dados reais do DATASUS** (SRAG 2024, ~268 mil casos),
+4 métricas determinísticas, 2 gráficos, agente (LangGraph + RAG + grounding), auditoria, API com
+guardrails, Streamlit e export PDF. **43 testes** passando. Guia de deploy no Railway em
+[`DEPLOY.md`](DEPLOY.md).
 
 ## Métricas e entregas do relatório
 - Taxa de aumento de casos · taxa de mortalidade · taxa de ocupação de UTI · taxa de vacinação.
