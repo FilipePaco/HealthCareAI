@@ -49,6 +49,18 @@
 - [x] T5.4 — `app_streamlit.py` consumindo a API (botão gerar → métricas + gráficos + comentários + PDF). (R8.4)
 - [x] T5.6 — `etl/seed.py`: dados sintéticos para usar/testar sem o CSV real. (apoio)
 
+## Fase 7 — Agência real + observabilidade de custo (evolução)
+- [x] T7.1 — `agent/news_agent.py`: laço de **tool-calling** (`bind_tools` → `buscar_noticias`), o LLM
+  decide refinar/repetir a busca até `NEWS_AGENT_MAX_ITERS`; cada iteração auditada; fallback
+  determinístico se o provedor não suportar tools. (R4.5, R4.7, R4.8 / ADR-11)
+- [x] T7.2 — `governance/usage.py`: `UsageTracker` (tokens de LLM via `usage_metadata` + buscas Tavily)
+  + custo estimado por tarifas de `config.py`. (R10.1, R10.2 / ADR-12)
+- [x] T7.3 — Integrar uso ao relatório/auditoria e expor `GET /usage` (totais + últimos). Composer com
+  `include_raw` para capturar tokens. (R10.3)
+- [x] T7.4 — Streamlit mostra uso e custo estimado do relatório gerado. (R10.3)
+- [x] T7.5 — Testes: laço de tool-calling (com fake LLM), `UsageTracker` (cálculo/custo), `GET /usage`;
+  documentados em `TEST_PLAN.md` antes. (R4.x, R10.x)
+
 ## Fase 6 — Deploy + entrega (D5)
 - [ ] T6.1 — Deploy no Railway via **Dockerfile** (build da imagem) + Postgres gerenciado; rodar ETL
   no ambiente. (R9.1, §16)

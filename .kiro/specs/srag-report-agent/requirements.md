@@ -56,12 +56,18 @@ agente embasados em notícias em tempo real, com rastreabilidade completa das de
   não deve usar a notícia para embasar comentários.
 - **R4.4** *(Unwanted)* Se a busca de notícias falhar ou retornar vazio, então o sistema deve gerar o
   relatório com as métricas e sinalizar explicitamente a ausência de contexto noticioso.
-- **R4.5** *(Event-driven)* Quando buscar notícias, o agente deve **formular os termos de busca** a
-  partir do cenário das métricas e pode decidir refinar a busca uma vez, dentro de um limite
-  configurável (agência restrita ao nó de notícias).
+- **R4.5** *(Event-driven)* Quando buscar notícias, o agente deve usar uma **ferramenta de busca
+  chamável pelo LLM** (*tool-calling*): o modelo **formula a query** a partir do cenário das métricas e
+  **decide, em um laço de raciocínio, se refina e repete a busca**, até um limite configurável de
+  iterações (agência restrita ao nó de notícias — ADR-09/ADR-11).
 - **R4.6** *(Ubiquitous)* O sistema deve **vetorizar (embeddings)** os trechos de notícia retornados,
   indexá-los em um vector store **em memória** e recuperar o **top-k** mais relevante ao cenário antes
   de embasar os comentários (RAG efêmero, reconstruído por requisição).
+- **R4.7** *(Unwanted)* Se o *tool-calling* de notícias falhar (modelo sem suporte a ferramentas, cota
+  esgotada ou erro), então o sistema deve **degradar** para uma busca determinística (query formulada
+  ou termo padrão), preservando o fallback de R4.4.
+- **R4.8** *(Event-driven)* Quando o LLM solicitar uma chamada de ferramenta de busca, o sistema deve
+  registrar no trilho de auditoria a query e a contagem de resultados de **cada** iteração (P2).
 
 ## 5. Geração do relatório (agente orquestrador)
 
@@ -116,6 +122,17 @@ agente embasados em notícias em tempo real, com rastreabilidade completa das de
 
 - **R9.1** *(Ubiquitous)* A solução deve ser implantável no Railway com Postgres provisionado e
   configuração via variáveis de ambiente.
+
+## 10. Observabilidade de uso e custo (LLM e busca)
+
+- **R10.1** *(Event-driven)* Quando um relatório for gerado, o sistema deve registrar o uso de **LLM**
+  (nº de chamadas e tokens de entrada/saída) e de **busca de notícias** (nº de buscas Tavily) daquele
+  relatório.
+- **R10.2** *(Ubiquitous)* O sistema deve **estimar o custo aproximado** (USD) a partir de **tarifas
+  configuráveis** por token (entrada/saída) e por busca — sem números mágicos (P7); a estimativa é
+  rotulada como tal.
+- **R10.3** *(Ubiquitous)* O uso/custo deve ser **exposto no JSON do relatório**, **registrado no
+  trilho de auditoria** (P2) e disponível de forma **agregada via API** (`GET /usage`).
 
 ---
 

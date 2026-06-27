@@ -20,7 +20,7 @@ flowchart TB
         ORCH{{Orquestrador<br/>grafo de estado}}
         ORCH --> MT[Tool: Métricas<br/>SQL parametrizado]
         ORCH --> CT[Tool: Gráficos<br/>30d / 12m]
-        ORCH --> NT[Tool: Notícias<br/>Tavily + fonte/data]
+        ORCH --> NT[Nó Notícias<br/>LLM tool-calling em laço<br/>buscar_noticias + RAG]
         ORCH --> COMP[Composer LLM<br/>comentários com grounding]
         MT --> LOAD
         CT --> LOAD
@@ -37,6 +37,7 @@ flowchart TB
         EP2[GET /reports/:id/pdf]
         EP3[GET /metrics, /data/...]
         EP4[GET /audit/:id]
+        EP5[GET /usage]
     end
 
     UI[Streamlit / Front futuro] --> API
@@ -71,13 +72,27 @@ rascunho do comentário. Cada transição é um ponto natural de **checkpoint e 
 |---|---|---|---|
 | `metrics_tool` | janela temporal | 4 métricas + valores brutos | só queries da whitelist (P5) |
 | `chart_tool` | série diária/mensal | 2 imagens PNG | dados vêm das views (P1) |
-| `news_tool` | termo(s) de busca + recência | lista {título, url, data, trecho} | janela de recência + atribuição (P3) |
+| `buscar_noticias` (LLM tool) | query de busca | lista {título, url, data, trecho} | janela de recência + atribuição (P3) |
 
-**Grau de agência (decisão consciente).** Métricas e gráficos
-são **determinísticos** (não há agência sobre números). A agência do LLM existe **apenas no nó de
-notícias**: o modelo, a partir do cenário das métricas, **formula os termos de busca** e **decide se
-aprofunda** (nova rodada de busca com termos refinados, até um limite). É "agente de verdade" onde é
-seguro, sem abrir mão da auditabilidade onde importa.
+**Grau de agência (decisão consciente) — abordagem híbrida.** Métricas e gráficos são
+**determinísticos** (não há agência sobre números). A agência do LLM existe **apenas no nó de
+notícias**, e aí ela é **real**: a busca é exposta como uma **ferramenta chamável pelo modelo**
+(`bind_tools` → `buscar_noticias`). O nó roda um **laço de *tool-calling*** (modelo ⇄ ferramenta): o
+LLM formula a query, lê os resultados e **decide por conta própria** se a busca foi suficiente ou se
+refina e busca de novo, até um **limite de iterações** (`NEWS_AGENT_MAX_ITERS`). É "agente de verdade"
+onde é seguro, sem abrir mão do determinismo e da auditabilidade onde importa (ADR-09/ADR-11).
+
+```mermaid
+flowchart LR
+    M[Modelo<br/>bind_tools] -->|tool_call buscar_noticias| T[search_news<br/>Tavily]
+    T -->|ToolMessage: resultados| M
+    M -->|sem tool_call: encerra| R[RAG efêmero<br/>top-k]
+```
+
+Cada iteração — a query pedida pelo modelo e a contagem de resultados — é registrada no trilho de
+auditoria (R4.8/P2). Ao encerrar o laço, os artigos acumulados (deduplicados) passam pelo **RAG
+efêmero** (§2.4) para selecionar o top-k relevante. Se o *tool-calling* falhar (modelo sem suporte,
+cota), o nó **degrada** para a busca determinística (query formulada/padrão) preservando R4.4/R4.7.
 
 ### 2.4 RAG efêmero sobre as notícias
 O `gather_news` não joga todos os resultados crus no prompt. Ele monta um **RAG efêmero por
@@ -114,17 +129,29 @@ autenticação de usuários (fora de escopo). O Streamlit envia a API key a part
 O **Streamlit é apenas um cliente** desses endpoints (R8.4) — exatamente a mesma fronteira que um
 front-end customizado futuro usaria. Isso satisfaz o requisito de "deixar os endpoints prontos".
 
+### 2.8 Observabilidade de uso e custo (transversal)
+`src/governance/usage.py` define um **`UsageTracker`** que acompanha, por relatório, o consumo dos dois
+recursos pagos: **LLM** (nº de chamadas e tokens de entrada/saída, lidos do `usage_metadata` de cada
+resposta) e **busca Tavily** (nº de buscas). A partir de **tarifas configuráveis** (`src/config.py`,
+P7) calcula um **custo estimado em USD** — explicitamente uma estimativa. O resultado é (a) anexado ao
+JSON do relatório (`usage`), (b) registrado no trilho de auditoria e (c) **agregado** via `GET /usage`
+(totais + últimos relatórios), permitindo acompanhar o gasto acumulado. Atende R10.x e o princípio P9.
+
 ## 3. Fluxo de uma requisição de relatório
 1. Cliente chama `POST /reports`.
 2. API instancia o grafo LangGraph com um `report_id` e abre o contexto de auditoria.
 3. `gather_metrics` executa as 4 queries parametrizadas → métricas determinísticas.
 4. `gather_charts` gera os 2 gráficos a partir das views.
-5. `gather_news`: o LLM formula os termos de busca a partir do cenário; o Tavily retorna notícias
-   recentes (fonte/data); os trechos são embeddados num `InMemoryVectorStore` e recupera-se o top-k
-   relevante (RAG efêmero). O LLM pode decidir refinar a busca uma vez, dentro do limite.
+5. `gather_news`: o LLM, com a ferramenta `buscar_noticias` vinculada (`bind_tools`), roda um **laço
+   de *tool-calling*** — formula a query, lê os resultados do Tavily (fonte/data) e **decide se refina
+   e busca de novo**, até o limite de iterações; cada iteração é auditada (R4.8). Os artigos acumulados
+   são embeddados num `InMemoryVectorStore` e recupera-se o top-k relevante (RAG efêmero). Falha de
+   *tool-calling* degrada para busca determinística (R4.7).
 6. `compose_report` chama o LLM para gerar, **por métrica**, a explicação ancorada, mais a síntese —
    com grounding e disclaimer.
-7. Resultado persistido; auditoria fechada; JSON retornado (PDF sob demanda em `/pdf`).
+7. O **`UsageTracker`** consolida tokens/chamadas de LLM e buscas Tavily da requisição, com custo
+   estimado (§2.8). Resultado persistido (incl. `usage`); auditoria fechada; JSON retornado (PDF sob
+   demanda em `/pdf`).
 
 ## 4. Tratamento de dados sensíveis (resumo P4)
 - Seleção mínima de colunas + descarte de identificadores na ETL.
@@ -202,15 +229,39 @@ e agregaria operação sem ganho. Embeddings em memória + retrieve top-k melhor
 mantendo a imagem leve (sem `faiss`/`chroma`; usa `InMemoryVectorStore` do LangChain).
 
 ### ADR-09 — Agência restrita ao nó de notícias (vs determinístico total / ReAct livre)
-**Decisão:** o LLM tem agência apenas para formular/refinar os termos de busca de notícias; métricas e
+**Decisão:** o LLM tem agência apenas no nó de notícias (formular/refinar/repetir a busca); métricas e
 gráficos permanecem determinísticos.
 **Porquê:** dá comportamento genuinamente "agêntico" onde é seguro (formular boa query é tarefa de
 linguagem), sem expor os números à variabilidade do modelo. Um ReAct de escolha livre de tools seria
 mais difícil de auditar e garantir guardrails (contra P1/P2/P5); o determinístico total seria pouco
 agêntico para o enunciado.
+**Como a agência é realizada:** ver ADR-11 (passou de "formular query + 1 refino" para um laço de
+*tool-calling* de verdade, mantendo o mesmo escopo restrito).
 
 ### ADR-10 — Segurança mínima da API (vs autenticação de usuários / API aberta)
 **Decisão:** middleware com API key + rate limiting + CORS; **sem** autenticação de usuários.
 **Porquê:** uma API que dispara LLM exposta sem proteção é um furo de guardrail e de custo. A proteção
 mínima fecha isso e pontua em "Guardrails". Já um sistema de login/cadastro/roles seria **fuga ao
 escopo** (o desafio não tem gestão de usuários) e consumiria tempo sem ser avaliado.
+
+### ADR-11 — Notícias via *tool-calling* do LLM (vs query única + 1 refino)
+**Decisão:** o nó de notícias expõe a busca como **ferramenta chamável** (`bind_tools`) e roda um
+**laço de raciocínio** (modelo ⇄ ToolNode manual): o LLM emite chamadas `buscar_noticias`, lê os
+`ToolMessage` de resposta e decide encerrar ou refinar, até `NEWS_AGENT_MAX_ITERS`.
+**Alternativas:** (a) a versão anterior — o LLM só devolvia uma string de query e o código fazia 1
+refino fixo; (b) ReAct livre com várias tools (descartado em ADR-09).
+**Porquê:** demonstra **uso de tools de verdade** (o modelo *decide* chamar a ferramenta e itera com
+base no resultado), critério explícito do desafio, sem ampliar a superfície de risco — a ferramenta é
+**uma só** e somente de leitura (busca), os números seguem determinísticos (P1), e cada iteração é
+auditada (R4.8/P2). Mantém-se o escopo de ADR-09. Custo: +1–2 chamadas de LLM por relatório (limitadas
+e contabilizadas em §2.8) e fallback determinístico se o provedor não suportar tools (R4.7).
+
+### ADR-12 — Observabilidade de uso/custo (vs sem medição / billing externo)
+**Decisão:** um `UsageTracker` interno mede tokens de LLM (via `usage_metadata`) e buscas Tavily por
+relatório e estima o custo com **tarifas configuráveis**; exposto no relatório, na auditoria e em
+`GET /usage`.
+**Alternativas:** (a) não medir; (b) depender só dos painéis de billing de Google/Tavily.
+**Porquê:** uma PoC agêntica que dispara LLM e busca precisa tornar o **gasto visível e auditável** —
+reforça governança (P2) e controle de custo (já endereçado por rate limit em ADR-10). Medir no próprio
+processo dá granularidade por relatório que o billing externo não oferece, a custo de manter tarifas de
+referência atualizáveis por env (P7). É **estimativa**, não fatura — e é rotulada como tal.

@@ -7,6 +7,23 @@ SYSTEM_QUERY = (
     "Responda apenas com a query, sem aspas nem explicação."
 )
 
+SYSTEM_NEWS_AGENT = (
+    "Você é um assistente que reúne notícias recentes sobre SRAG (síndrome respiratória aguda grave) "
+    "no Brasil para embasar um relatório de saúde pública. Use a ferramenta `buscar_noticias` com uma "
+    "query curta em português, derivada do cenário das métricas. Avalie os resultados: se forem pouco "
+    "relevantes ou insuficientes, **refine a query e busque de novo** — porém de forma econômica, em "
+    "poucas iterações. Quando tiver fontes relevantes o bastante, **responda SEM chamar a ferramenta**, "
+    "resumindo brevemente o que encontrou. Não invente fatos nem fontes."
+)
+
+
+def news_agent_user_prompt(metrics: dict) -> str:
+    return (
+        f"{scenario_text(metrics)}\n\n"
+        "Busque notícias recentes e relevantes a esse cenário de SRAG no Brasil."
+    )
+
+
 SYSTEM_COMPOSER = (
     "Você é um analista de saúde pública. Escreva em português do Brasil, de forma objetiva. "
     "Para CADA métrica fornecida, escreva uma explicação curta do que o valor indica sobre o cenário "

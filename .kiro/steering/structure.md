@@ -22,6 +22,7 @@ HealthCareAI/
 │   │   └── queries.py            # queries parametrizadas das métricas (P1, whitelist P5)
 │   ├── agent/
 │   │   ├── graph.py               # definição do grafo LangGraph (orquestrador)
+│   │   ├── news_agent.py          # laço de tool-calling de notícias (bind_tools, ADR-11)
 │   │   ├── state.py               # estado tipado do grafo
 │   │   ├── tools/
 │   │   │   ├── metrics_tool.py    # chama db.queries (determinístico)
@@ -31,7 +32,8 @@ HealthCareAI/
 │   │   ├── llm.py                 # camada provider-agnostic: chat + embeddings (P8)
 │   │   └── prompts.py             # system prompt + guardrails de saída (P5)
 │   ├── governance/
-│   │   └── audit.py               # logging estruturado de decisões (P2)
+│   │   ├── audit.py               # logging estruturado de decisões (P2)
+│   │   └── usage.py               # UsageTracker: tokens de LLM + buscas + custo estimado (P9)
 │   ├── report/
 │   │   ├── composer.py            # monta o relatório (métricas+gráficos+comentário+fontes)
 │   │   └── pdf.py                 # render do PDF

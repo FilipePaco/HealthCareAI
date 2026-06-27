@@ -80,6 +80,27 @@
 | `test_enforce_grounding_drops_unlisted_sources` | Fonte fora das notícias recuperadas é removida | R5.4 | não |
 | `test_generate_report_real` | Grafo ponta a ponta: comentário por métrica (4), síntese, fontes só de notícias, disclaimer | R5.1–R5.6 | DB+Gemini+Tavily |
 
+### `src/agent/news_agent.py` — laço de tool-calling de notícias (Fase 7)
+| Teste | O que valida | Ref | Rede? |
+|---|---|---|---|
+| `test_news_agent_loops_until_model_stops` | Com LLM *fake*, o laço chama `buscar_noticias` enquanto o modelo pede e encerra quando ele para; nº de buscas = nº de tool_calls | R4.5, R4.8 | não |
+| `test_news_agent_respects_max_iters` | Modelo que sempre pede tool é interrompido em `NEWS_AGENT_MAX_ITERS` | R4.5 | não |
+| `test_news_agent_falls_back_on_tool_error` | Se o LLM/bind_tools lança, degrada para busca determinística (não quebra) | R4.7, R4.4 | não |
+| `test_news_agent_records_each_iteration` | Cada iteração registra query + contagem no trilho de auditoria | R4.8 | não |
+
+### `src/governance/usage.py` — uso e custo (Fase 7) — *puro*
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_usage_accumulates_llm_tokens` | `record_llm` soma chamadas e tokens de `usage_metadata` | R10.1 |
+| `test_usage_counts_searches` | `record_search` conta buscas Tavily | R10.1 |
+| `test_usage_estimated_cost` | custo estimado = tokens×tarifa + buscas×tarifa (config) | R10.2 |
+| `test_usage_as_dict_shape` | `as_dict` expõe chamadas, tokens (in/out/total), buscas e custo | R10.3 |
+
+### `GET /usage` — agregação de uso (Fase 7) — *integração c/ Postgres*
+| Teste | O que valida | Ref | DB? |
+|---|---|---|---|
+| `test_usage_endpoint_aggregates` | `GET /usage` soma o uso dos relatórios persistidos e retorna totais | R10.3 | sim |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
 - `src/report/pdf.py`: export do relatório em PDF (R8.2).
 - `app_streamlit.py`: cliente consumindo a API.

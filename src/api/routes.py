@@ -16,7 +16,7 @@ from src.agent.tools import chart_tool
 from src.api.security import require_api_key
 from src.db import queries as q
 from src.db.models import get_engine
-from src.db.reports_store import get_report
+from src.db.reports_store import aggregate_usage, get_report, init_reports
 from src.governance.audit import AuditTrail, init_audit
 from src.report.pdf import build_pdf
 
@@ -120,3 +120,11 @@ def get_audit(report_id: str) -> dict:
     eng = engine()
     init_audit(eng)
     return {"report_id": report_id, "trail": AuditTrail(eng, report_id=report_id).entries()}
+
+
+@router.get("/usage", dependencies=[Depends(require_api_key)])
+def usage() -> dict:
+    """Uso e custo estimado de LLM/busca, agregados e por relatório (R10.3, P9)."""
+    eng = engine()
+    init_reports(eng)
+    return aggregate_usage(eng)

@@ -16,6 +16,7 @@ from src.agent.prompts import (
     composer_user_prompt,
     scenario_text,
 )
+from src.governance.usage import UsageTracker
 
 
 class MetricComment(BaseModel):
@@ -44,21 +45,34 @@ def enforce_grounding(commentary: ReportCommentary, allowed_urls: set[str]) -> R
     return commentary
 
 
-def formulate_query(metrics: dict) -> str:
-    """Agência: o LLM formula os termos de busca a partir do cenário (R4.5)."""
+def formulate_query(metrics: dict, usage: UsageTracker | None = None) -> str:
+    """Formula os termos de busca a partir do cenário (fallback determinístico do nó de notícias)."""
     resp = get_chat().invoke(
         [SystemMessage(SYSTEM_QUERY), HumanMessage(scenario_text(metrics))]
     )
+    if usage is not None:
+        usage.record_llm(resp)
     raw = (resp.content or "").strip().strip('"')
     query = raw.splitlines()[0].strip() if raw else ""
     return query[:200] or "SRAG síndrome respiratória aguda grave notícias Brasil"
 
 
-def compose_commentary(metrics: dict, news: list[dict]) -> ReportCommentary:
-    """Gera o comentário por métrica + síntese, com grounding forçado."""
+def compose_commentary(
+    metrics: dict, news: list[dict], usage: UsageTracker | None = None
+) -> ReportCommentary:
+    """Gera o comentário por métrica + síntese, com grounding forçado.
+
+    Usa `include_raw=True` para capturar o `usage_metadata` da resposta (tokens) sem perder a
+    saída estruturada (P9).
+    """
     allowed = {n["url"] for n in news if n.get("url")}
-    chat = get_chat().with_structured_output(ReportCommentary)
+    chat = get_chat().with_structured_output(ReportCommentary, include_raw=True)
     result = chat.invoke(
         [SystemMessage(SYSTEM_COMPOSER), HumanMessage(composer_user_prompt(metrics, news))]
     )
-    return enforce_grounding(result, allowed)
+    if usage is not None and result.get("raw") is not None:
+        usage.record_llm(result["raw"])
+    parsed = result.get("parsed")
+    if parsed is None:  # falha de parsing -> trata como LLM indisponível (nó compose degrada)
+        raise ValueError(f"saída estruturada inválida: {result.get('parsing_error')}")
+    return enforce_grounding(parsed, allowed)

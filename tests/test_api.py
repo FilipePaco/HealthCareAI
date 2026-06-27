@@ -41,8 +41,21 @@ def test_report_and_audit_roundtrip(engine) -> None:
     _seed(engine)
     report = client.post("/reports", headers=HEADERS)
     assert report.status_code == 200
-    report_id = report.json()["report_id"]
+    body = report.json()
+    report_id = body["report_id"]
+    assert "usage" in body  # relatório expõe uso/custo (R10.3)
 
     audit = client.get(f"/audit/{report_id}", headers=HEADERS)
     assert audit.status_code == 200
     assert len(audit.json()["trail"]) >= 1
+
+
+def test_usage_endpoint_aggregates(engine) -> None:
+    _seed(engine)
+    client.post("/reports", headers=HEADERS)
+    resp = client.get("/usage", headers=HEADERS)
+    assert resp.status_code == 200
+    totals = resp.json()["totals"]
+    assert totals["reports"] >= 1
+    assert "estimated_cost_usd" in totals
+    assert isinstance(resp.json()["by_report"], list)

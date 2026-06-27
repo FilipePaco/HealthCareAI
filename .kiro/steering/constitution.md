@@ -65,3 +65,11 @@ O acesso ao LLM passa por uma única camada de abstração; trocar de provedor (
 Anthropic) é mudança de configuração, não de código.
 - **Porquê:** permite desenvolver no free tier do Gemini e migrar para um modelo mais capaz na
   reta final sem retrabalho.
+
+## P9 — Observabilidade de uso e custo dos recursos pagos
+Toda geração de relatório **mede e expõe** seu consumo de recursos pagos: chamadas/tokens de LLM e
+buscas de notícias, com **custo estimado** a partir de tarifas configuráveis. O gasto fica visível no
+relatório, no trilho de auditoria e de forma agregada via API.
+- **Porquê:** uma PoC agêntica dispara LLM e busca a cada execução; tornar o custo **visível e
+  auditável** é parte da governança (P2) e do controle de custo (junto do rate limiting). É estimativa
+  rotulada como tal, não fatura — mas dá a granularidade por relatório que o billing externo não dá.

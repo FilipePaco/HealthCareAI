@@ -71,6 +71,20 @@ if report:
         st.subheader("Síntese")
         st.write(commentary["synthesis"])
 
+    usage = report.get("usage")
+    if usage:
+        with st.expander("Uso e custo estimado deste relatório"):
+            u1, u2, u3, u4 = st.columns(4)
+            u1.metric("Chamadas LLM", usage.get("llm_calls", 0))
+            u2.metric("Tokens (total)", usage.get("total_tokens", 0))
+            u3.metric("Buscas Tavily", usage.get("tavily_searches", 0))
+            u4.metric("Custo estimado", f"US$ {usage.get('estimated_cost_usd', 0):.4f}")
+            st.caption(
+                f"Entrada: {usage.get('input_tokens', 0)} tokens · "
+                f"Saída: {usage.get('output_tokens', 0)} tokens · "
+                "valores são **estimativa** por tarifas configuráveis. Agregado em `GET /usage`."
+            )
+
     st.info(report.get("disclaimer", ""))
 
     pdf = _get(f"/reports/{report['report_id']}/pdf")

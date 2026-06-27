@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     report_increase_window_days: int = 14
     news_recency_days: int = 30
 
+    # Agência de notícias (ADR-11): limite do laço de tool-calling
+    news_agent_max_iters: int = 3
+
+    # Observabilidade de custo (P9/ADR-12) — tarifas de referência (estimativa), em USD.
+    # Defaults ~ Gemini 2.5 Flash-Lite; ajuste por env se trocar de modelo/provedor.
+    llm_input_cost_per_1m: float = 0.10
+    llm_output_cost_per_1m: float = 0.40
+    tavily_cost_per_search: float = 0.008
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

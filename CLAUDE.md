@@ -9,7 +9,7 @@ de SRAG (Open DATASUS) + notícias em tempo real e gera um **relatório auditáv
 gráficos e comentários embasados. Deploy no Railway. **É uma PoC; o conteúdo não é orientação médica.**
 
 ## Fonte da verdade (leia antes de codar)
-- `.kiro/steering/constitution.md` — **princípios invioláveis** (P1–P8). Respeite-os sempre.
+- `.kiro/steering/constitution.md` — **princípios invioláveis** (P1–P9). Respeite-os sempre.
 - `.kiro/steering/tech.md` — stack e contrato de variáveis de ambiente.
 - `.kiro/steering/structure.md` — estrutura-alvo de pastas e convenções.
 - `.kiro/specs/srag-report-agent/requirements.md` — requisitos (EARS).
@@ -26,7 +26,10 @@ ReportLab (PDF) · Docker multi-stage (`python:3.11-slim`).
 ## Regras de ouro (derivadas da constituição)
 - **Métricas são determinísticas.** O LLM NUNCA calcula nem escreve SQL. Use as queries
   parametrizadas de `src/db/queries.py` (whitelist). (P1, P5)
-- **Agência só no nó de notícias.** O LLM formula/refina termos de busca; o resto é determinístico. (ADR-09)
+- **Agência só no nó de notícias.** O LLM chama/refina a tool `buscar_noticias` num laço de
+  tool-calling (`bind_tools`); o resto é determinístico. Fallback determinístico se falhar. (ADR-09/ADR-11)
+- **Custo é observável.** Cada relatório mede tokens de LLM + buscas Tavily (`governance/usage.py`) e
+  estima o gasto; exposto no relatório, na auditoria e em `GET /usage`. (P9/ADR-12)
 - **Só agregados saem do banco.** Microdados nunca vão para a API, para o LLM nem para logs. (P4)
 - **Tudo é auditável.** Toda chamada de tool/LLM passa por `src/governance/audit.py`. (P2)
 - **Grounding obrigatório.** Toda afirmação cita métrica e/ou notícia (URL+data); senão é descartada. (P3)
