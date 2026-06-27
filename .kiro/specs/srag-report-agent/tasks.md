@@ -23,7 +23,7 @@
   whitelist + séries diária/mensal. (R2.1–R2.5, R7.1)
 - [x] T2.2 — Testes das métricas com dados sintéticos de resultado conhecido (integração c/ Postgres). (R2.5)
 - [x] T2.3 — Caso "sem dados" → nulo explícito (sem divisão por zero). (R2.6)
-- [ ] T2.4 — `agent/tools/chart_tool.py`: gráfico diário 30d e mensal 12m. (R3.1–R3.3)
+- [x] T2.4 — `agent/tools/chart_tool.py`: gráfico diário 30d e mensal 12m (densificação + PNG). (R3.1–R3.3)
 
 ## Fase 3 — Notícias + governança (D3)
 - [ ] T3.1 — `agent/tools/news_tool.py` (Tavily) com fonte/data e janela de recência. (R4.1–R4.4)

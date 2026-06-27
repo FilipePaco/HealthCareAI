@@ -40,6 +40,15 @@
 > Os testes de integração usam Postgres (docker compose `db`). Se o banco estiver indisponível,
 > são automaticamente **pulados** (skip) — a suíte unitária pura segue rodando.
 
+### `src/agent/tools/chart_tool.py` — gráficos (Fase 2) — *puro, sem rede/banco*
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_densify_daily_fills_missing_with_zero` | Últimos N dias contínuos; dias sem caso viram 0 | R3.1 |
+| `test_densify_monthly_fills_12_months` | Últimos N meses contínuos; meses sem caso viram 0 | R3.2 |
+| `test_render_bar_returns_png` | `render_bar` devolve PNG válido (assinatura `\x89PNG`) | R3.3 |
+| `test_daily_and_monthly_charts_png` | `daily_chart`/`monthly_chart` devolvem PNG a partir de série sintética | R3.1–R3.3 |
+| `test_charts_handle_empty_series` | Série vazia ainda gera PNG (não quebra) | R3.3 |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
 - `src/agent/rag.py`: retrieve top-k retorna os trechos mais relevantes (R4.6).
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).
