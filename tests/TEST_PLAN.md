@@ -49,6 +49,22 @@
 | `test_daily_and_monthly_charts_png` | `daily_chart`/`monthly_chart` devolvem PNG a partir de série sintética | R3.1–R3.3 |
 | `test_charts_handle_empty_series` | Série vazia ainda gera PNG (não quebra) | R3.3 |
 
+### `src/governance/audit.py` — auditoria (Fase 3) — *integração c/ Postgres*
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_audit_records_and_reads_back` | `record` persiste e `entries` lê de volta por report_id | R6.1, R6.2 |
+| `test_record_call_logs_input_output` | `record_call` registra entrada+saída e devolve o resultado | R6.1 |
+| `test_audit_scoped_by_report` | Trilhos de relatórios distintos não se misturam | R6.2 |
+| `test_audit_reduces_bytes` | Bytes (ex.: PNG) viram tamanho, não vazam conteúdo | P4 |
+
+### `src/api/` — API FastAPI (Fase 5)
+| Teste | O que valida | Ref | DB? |
+|---|---|---|---|
+| `test_health_no_auth` | `/health` responde sem API key | — | não |
+| `test_protected_requires_api_key` | `/metrics` sem key → 401 | R7.4 | não |
+| `test_metrics_with_key` | `/metrics` com key → 200 e métricas presentes | R8.3 | sim |
+| `test_report_and_audit_roundtrip` | `POST /reports` gera id; `GET /audit/{id}` traz o trilho | R8.1, R6.3 | sim |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
 - `src/agent/rag.py`: retrieve top-k retorna os trechos mais relevantes (R4.6).
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).

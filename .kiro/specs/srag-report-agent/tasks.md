@@ -28,7 +28,7 @@
 ## Fase 3 — Notícias + governança (D3)
 - [ ] T3.1 — `agent/tools/news_tool.py` (Tavily) com fonte/data e janela de recência. (R4.1–R4.4)
 - [ ] T3.2 — `agent/rag.py`: embeddings + `InMemoryVectorStore` + retrieve top-k (RAG efêmero). (R4.6)
-- [ ] T3.3 — `governance/audit.py`: logging estruturado de tools e LLM + tabela `audit_log`. (R6.1, R6.2)
+- [x] T3.3 — `governance/audit.py`: logging estruturado de tools e LLM + tabela `audit_log`. (R6.1, R6.2)
 
 ## Fase 4 — Agente orquestrador (D3 tarde – D4)
 - [ ] T4.1 — `agent/llm.py` provider-agnostic (`init_chat_model`). (P8/ADR-04)
@@ -39,10 +39,11 @@
 - [ ] T4.4 — Teste de grounding (afirmação sem fonte é descartada/marcada). (R5.4)
 
 ## Fase 5 — API + interface (D4)
-- [ ] T5.1 — `api/main.py` + rotas `POST /reports`, `GET /reports/{id}`. (R8.1)
+- [~] T5.1 — `api/main.py` + `POST /reports` + `/charts/*.png` (parte de dados pronta; comentário do
+  LLM e `GET /reports/{id}` com persistência entram com o agente). (R8.1)
 - [ ] T5.2 — `report/pdf.py` + `GET /reports/{id}/pdf`. (R8.2)
-- [ ] T5.3 — `GET /metrics`, `GET /data/daily`, `GET /data/monthly`, `GET /audit/{id}`. (R8.3, R6.3)
-- [ ] T5.5 — `api/security.py`: middleware API key (`X-API-Key`) + rate limiting (slowapi) + CORS. (R7.4–R7.7)
+- [x] T5.3 — `GET /metrics`, `GET /data/daily`, `GET /data/monthly`, `GET /audit/{id}`. (R8.3, R6.3)
+- [x] T5.5 — `api/security.py`: middleware API key (`X-API-Key`) + rate limiting (slowapi) + CORS. (R7.4–R7.7)
 - [ ] T5.4 — `app_streamlit.py` consumindo a API (botão gerar → métricas + gráficos + comentários + PDF). (R8.4)
 
 ## Fase 6 — Deploy + entrega (D5)

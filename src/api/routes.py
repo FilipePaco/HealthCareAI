@@ -1,0 +1,108 @@
+"""Endpoints da API (API-first). Dados agregados + gráficos + relatório + auditoria.
+
+O relatório (`POST /reports`) já monta métricas, séries e trilho de auditoria; o comentário
+do LLM e as fontes de notícia entram quando o agente (Tavily+LLM) for plugado.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict
+from datetime import date
+
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy.engine import Engine
+
+from src.agent.tools import chart_tool
+from src.api.security import require_api_key
+from src.db import queries as q
+from src.db.models import get_engine
+from src.governance.audit import AuditTrail, init_audit
+
+router = APIRouter()
+_engine: Engine | None = None
+
+DISCLAIMER = "PoC de caráter educacional — não constitui orientação médica."
+
+
+def engine() -> Engine:
+    global _engine
+    if _engine is None:
+        _engine = get_engine()
+    return _engine
+
+
+def _all_metrics(conn, data_ref: date | None) -> dict[str, dict]:
+    return {name: asdict(q.run_metric(conn, name, data_ref=data_ref)) for name in q.METRICS}
+
+
+@router.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@router.get("/metrics", dependencies=[Depends(require_api_key)])
+def metrics() -> dict:
+    with engine().connect() as conn:
+        data_ref = q.get_data_ref(conn)
+        return {"data_ref": data_ref, "metrics": _all_metrics(conn, data_ref)}
+
+
+@router.get("/data/daily", dependencies=[Depends(require_api_key)])
+def data_daily() -> dict:
+    with engine().connect() as conn:
+        ref = q.get_data_ref(conn)
+        series = q.serie_diaria(conn, ref) if ref else []
+        return {"data_ref": ref, "series": [{"dia": d.isoformat(), "casos": c} for d, c in series]}
+
+
+@router.get("/data/monthly", dependencies=[Depends(require_api_key)])
+def data_monthly() -> dict:
+    with engine().connect() as conn:
+        ref = q.get_data_ref(conn)
+        series = q.serie_mensal(conn, ref) if ref else []
+        return {"data_ref": ref, "series": [{"mes": d.isoformat(), "casos": c} for d, c in series]}
+
+
+@router.get("/charts/daily.png", dependencies=[Depends(require_api_key)])
+def chart_daily() -> Response:
+    with engine().connect() as conn:
+        ref = q.get_data_ref(conn)
+        series = q.serie_diaria(conn, ref) if ref else []
+    return Response(chart_tool.daily_chart(series, ref or date.today()), media_type="image/png")
+
+
+@router.get("/charts/monthly.png", dependencies=[Depends(require_api_key)])
+def chart_monthly() -> Response:
+    with engine().connect() as conn:
+        ref = q.get_data_ref(conn)
+        series = q.serie_mensal(conn, ref) if ref else []
+    return Response(chart_tool.monthly_chart(series, ref or date.today()), media_type="image/png")
+
+
+@router.post("/reports", dependencies=[Depends(require_api_key)])
+def create_report() -> dict:
+    eng = engine()
+    init_audit(eng)
+    trail = AuditTrail(eng)
+    with eng.connect() as conn:
+        ref = q.get_data_ref(conn)
+        metrics_out = _all_metrics(conn, ref)
+        daily = q.serie_diaria(conn, ref) if ref else []
+        monthly = q.serie_mensal(conn, ref) if ref else []
+    trail.record("metrics", metrics_out)
+    trail.record("series", {"daily_points": len(daily), "monthly_points": len(monthly)})
+    return {
+        "report_id": trail.report_id,
+        "data_ref": ref,
+        "metrics": metrics_out,
+        "charts": {"daily": "/charts/daily.png", "monthly": "/charts/monthly.png"},
+        "commentary": None,  # preenchido pelo agente (Tavily + LLM)
+        "sources": [],
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@router.get("/audit/{report_id}", dependencies=[Depends(require_api_key)])
+def get_audit(report_id: str) -> dict:
+    eng = engine()
+    init_audit(eng)
+    return {"report_id": report_id, "trail": AuditTrail(eng, report_id=report_id).entries()}
