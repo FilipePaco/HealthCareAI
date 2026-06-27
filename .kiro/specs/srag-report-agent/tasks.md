@@ -4,19 +4,19 @@
 > Marque `[x]` conforme concluir. Ordem pensada para ter algo demonstrável cedo (P: feito > perfeito).
 
 ## Fase 0 — Fundação (D1, manhã)
-- [ ] T0.1 — `pyproject.toml`, Ruff, pytest, estrutura de pastas de `structure.md`.
-- [ ] T0.2 — `src/config.py` (Pydantic Settings) lendo o contrato de env de `tech.md`. (R7.3)
-- [ ] T0.3 — `.env.example` + README inicial com instruções de setup.
+- [x] T0.1 — `pyproject.toml`, Ruff, pytest, estrutura de pastas de `structure.md`.
+- [x] T0.2 — `src/config.py` (Pydantic Settings) lendo o contrato de env de `tech.md`. (R7.3)
+- [x] T0.3 — `.env.example` (+ `.env` local gitignored) com o contrato de variáveis.
 - [ ] T0.4 — Provisionar Postgres no Railway; validar `DATABASE_URL` local via túnel/instância. (R9.1)
 - [ ] T0.5 — `Dockerfile` multi-stage + `.dockerignore` + `docker-compose.yml`; validar build leve e
   `docker compose up` (db + api + streamlit). (decisão §16)
 
 ## Fase 1 — Dados / ETL (D1 tarde – D2)
 - [ ] T1.1 — Baixar CSV do DATASUS e o **dicionário de dados**; mapear colunas das 4 métricas. (R1.1)
-- [ ] T1.2 — `etl/clean.py`: seleção de colunas, parsing de datas, regras de ausência/inválidos
+- [x] T1.2 — `etl/clean.py`: seleção de colunas, parsing de datas, regras de ausência/inválidos
   documentadas, **remoção de identificadores**. (R1.2, R1.3, R1.4)
 - [ ] T1.3 — `db/models.py` + `etl/load.py`: carga idempotente em `srag_cases` + views diária/mensal. (R1.5)
-- [ ] T1.4 — Testes da ETL com linhas sujas sintéticas. (estratégia de testes §5)
+- [x] T1.4 — Testes da ETL com linhas sujas sintéticas (8 casos, `tests/test_clean.py` + `TEST_PLAN.md`). (estratégia de testes §5)
 
 ## Fase 2 — Métricas e gráficos determinísticos (D2 – D3 manhã)
 - [ ] T2.1 — `db/queries.py`: 4 queries parametrizadas (aumento, mortalidade, UTI, vacinação) +
