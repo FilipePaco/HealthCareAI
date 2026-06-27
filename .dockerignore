@@ -1,0 +1,26 @@
+# Mantém o contexto de build (e a imagem) enxutos
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Dados brutos do DATASUS (grandes) — nunca entram na imagem
+data/
+
+# Specs e docs não são necessários no runtime
+.kiro/
+docs/
+tests/
+*.md
+
+# Segredos e ambiente local
+.env
+.env.*
+!.env.example

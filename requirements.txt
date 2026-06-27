@@ -1,0 +1,36 @@
+# Runtime — mantido enxuto para imagem leve.
+# Apenas o provedor de LLM default (Gemini) é instalado; OpenAI/Anthropic ficam
+# comentados e só entram se LLM_PROVIDER for trocado (mantém a imagem pequena).
+
+# --- API ---
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.6
+slowapi>=0.1.9                   # rate limiting (guardrail HTTP + custo de LLM)
+
+# --- Banco ---
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+
+# --- Dados / gráficos ---
+pandas>=2.2
+matplotlib>=3.9
+
+# --- Agente / LLM (provider-agnostic) ---
+langgraph>=0.2
+langchain>=0.3
+langchain-google-genai>=2.0      # provedor default (Gemini)
+# langchain-openai>=0.2          # habilitar se LLM_PROVIDER=openai
+# langchain-anthropic>=0.2       # habilitar se LLM_PROVIDER=anthropic
+tavily-python>=0.5               # tool de notícias
+# RAG efêmero: InMemoryVectorStore vem do langchain-core (sem faiss/chroma → imagem leve);
+# embeddings via langchain-google-genai (já incluído acima)
+
+# --- Interface ---
+streamlit>=1.39
+httpx>=0.27                      # cliente HTTP do Streamlit -> API
+
+# --- PDF ---
+reportlab>=4.2                   # leve, sem libs nativas (preferido p/ imagem enxuta)
+# weasyprint>=63                 # alternativa HTML->PDF; requer libpango/cairo no Dockerfile

@@ -1,0 +1,50 @@
+# Orquestração local (paridade com o ambiente Railway).
+# No Railway: o Postgres é um serviço gerenciado (plugin) e a API/Streamlit usam o mesmo Dockerfile;
+# este compose existe para rodar tudo localmente com um comando.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: srag
+      POSTGRES_PASSWORD: srag
+      POSTGRES_DB: srag
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U srag"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    command: sh -c "uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://srag:srag@db:5432/srag
+      LLM_PROVIDER: ${LLM_PROVIDER:-google_genai}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src        # hot-reload em dev
+    depends_on:
+      db:
+        condition: service_healthy
+
+  streamlit:
+    build: .
+    command: sh -c "streamlit run app_streamlit.py --server.port 8501 --server.address 0.0.0.0"
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
