@@ -26,12 +26,12 @@
 - [x] T2.4 — `agent/tools/chart_tool.py`: gráfico diário 30d e mensal 12m (densificação + PNG). (R3.1–R3.3)
 
 ## Fase 3 — Notícias + governança (D3)
-- [ ] T3.1 — `agent/tools/news_tool.py` (Tavily) com fonte/data e janela de recência. (R4.1–R4.4)
-- [ ] T3.2 — `agent/rag.py`: embeddings + `InMemoryVectorStore` + retrieve top-k (RAG efêmero). (R4.6)
+- [x] T3.1 — `agent/tools/news_tool.py` (Tavily) com fonte/data e janela de recência. (R4.1–R4.4)
+- [x] T3.2 — `agent/rag.py`: embeddings + `InMemoryVectorStore` + retrieve top-k (RAG efêmero). (R4.6)
 - [x] T3.3 — `governance/audit.py`: logging estruturado de tools e LLM + tabela `audit_log`. (R6.1, R6.2)
 
 ## Fase 4 — Agente orquestrador (D3 tarde – D4)
-- [ ] T4.1 — `agent/llm.py` provider-agnostic (`init_chat_model`). (P8/ADR-04)
+- [x] T4.1 — `agent/llm.py` provider-agnostic (`init_chat_model` + embeddings). (P8/ADR-04)
 - [ ] T4.2 — `agent/state.py` + `agent/graph.py`: nós gather_metrics → charts → news(+RAG) → compose;
   agência do LLM ao formular/refinar termos de busca no nó de notícias. (R5.1, R4.5)
 - [ ] T4.3 — `agent/prompts.py` + `report/composer.py`: explicação **por métrica** + síntese, com

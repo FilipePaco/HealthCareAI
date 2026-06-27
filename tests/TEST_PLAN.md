@@ -65,7 +65,17 @@
 | `test_metrics_with_key` | `/metrics` com key → 200 e métricas presentes | R8.3 | sim |
 | `test_report_and_audit_roundtrip` | `POST /reports` gera id; `GET /audit/{id}` traz o trilho | R8.1, R6.3 | sim |
 
+### `src/agent/` — notícias + RAG + LLM (Fase 3/4) — *smoke real (gasta tokens); pula sem chave*
+| Teste | O que valida | Ref | Rede? |
+|---|---|---|---|
+| `test_news_fallback_without_key` | Sem chave Tavily → lista vazia (fallback) | R4.4 | não |
+| `test_search_news_real` | Tavily retorna artigos com URL para consulta de SRAG | R4.1, R4.2 | Tavily |
+| `test_rag_ranks_relevant_first` | Embeddings + InMemoryVectorStore: top-1 é o trecho relevante | R4.6 | Gemini |
+| `test_rag_empty_without_articles` | Sem artigos → retrieve vazio (fallback) | R4.4 | não |
+| `test_chat_smoke` | `get_chat().invoke` responde (LLM acessível) | P8 | Gemini |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
-- `src/agent/rag.py`: retrieve top-k retorna os trechos mais relevantes (R4.6).
+- `src/agent/graph.py` + `report/composer.py`: comentário por métrica com grounding; afirmação sem
+  fonte é descartada/marcada (R5.4, R5.6).
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).
 - `src/api/security.py`: request sem API key -> 401; excesso -> 429 (R7.4, R7.5).

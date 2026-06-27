@@ -10,7 +10,7 @@ Decisões de stack travadas para a PoC. Justificativas detalhadas estão em
 | LLM (default) | **Gemini 2.5 Flash** via `init_chat_model` | Free tier generoso + function calling; abstraído (P8) |
 | Banco de dados | **PostgreSQL** (Railway) | Tool SQL parametrizada; separa ETL de runtime (P6) |
 | Busca de notícias | **Tavily** (tool) | API de busca desenhada para agentes, retorna fonte+data |
-| Embeddings | **Gemini `text-embedding`** (via abstração) | RAG sobre notícias; mesmo provedor do chat |
+| Embeddings | **Gemini `gemini-embedding-001`** (via abstração) | RAG sobre notícias; mesmo provedor do chat |
 | Vector store | **LangChain `InMemoryVectorStore`** | RAG efêmero por requisição; sem infra/peso extra |
 | Backend/API | **FastAPI** | API-first; endpoints p/ relatório, PDF e exploração |
 | Gráficos | **Matplotlib** (server-side) | Render determinístico p/ embutir no PDF e servir via API |
