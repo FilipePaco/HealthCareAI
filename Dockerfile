@@ -33,6 +33,9 @@ COPY --from=builder /opt/venv /opt/venv
 COPY src/ ./src/
 COPY app_streamlit.py ./
 
+# Pasta de dados gravável pelo usuário não-root (download do CSV do DATASUS)
+RUN mkdir -p /app/data && chown appuser /app/data
+
 USER appuser
 EXPOSE 8000
 
