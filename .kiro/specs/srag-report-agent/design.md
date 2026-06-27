@@ -73,7 +73,7 @@ rascunho do comentário. Cada transição é um ponto natural de **checkpoint e 
 | `chart_tool` | série diária/mensal | 2 imagens PNG | dados vêm das views (P1) |
 | `news_tool` | termo(s) de busca + recência | lista {título, url, data, trecho} | janela de recência + atribuição (P3) |
 
-**Grau de agência (decisão consciente — ver `decisoes-arquiteturais.md` §18).** Métricas e gráficos
+**Grau de agência (decisão consciente).** Métricas e gráficos
 são **determinísticos** (não há agência sobre números). A agência do LLM existe **apenas no nó de
 notícias**: o modelo, a partir do cenário das métricas, **formula os termos de busca** e **decide se
 aprofunda** (nova rodada de busca com termos refinados, até um limite). É "agente de verdade" onde é
@@ -85,7 +85,7 @@ requisição**: (1) os trechos retornados pelo Tavily são **embeddados** (embed
 Gemini `text-embedding`), (2) carregados num **`InMemoryVectorStore`** (LangChain, em memória, sem
 infra persistente), (3) recupera-se o **top-k** mais relevante ao cenário das métricas. O índice é
 **reconstruído a cada relatório e descartado** — adequado a notícia efêmera/tempo real e sem custo de
-manter um vector DB. (Justificativa em `decisoes-arquiteturais.md` §17.)
+manter um vector DB.
 
 ### 2.5 Composer / LLM (provider-agnostic)
 Nó final que recebe as métricas e os trechos de notícia **recuperados (top-k)** e gera o relatório
@@ -199,8 +199,7 @@ recuperar o top-k relevante; índice descartado ao fim.
 **Porquê:** atende o pré-requisito de "banco vetorial/RAG" demonstrando a técnica de fato, mas sem
 infra: notícia é **efêmera** e específica de cada relatório, então um índice persistente envelheceria
 e agregaria operação sem ganho. Embeddings em memória + retrieve top-k melhora o sinal (filtra ruído)
-mantendo a imagem leve (sem `faiss`/`chroma`; usa `InMemoryVectorStore` do LangChain). Ver
-`decisoes-arquiteturais.md` §17.
+mantendo a imagem leve (sem `faiss`/`chroma`; usa `InMemoryVectorStore` do LangChain).
 
 ### ADR-09 — Agência restrita ao nó de notícias (vs determinístico total / ReAct livre)
 **Decisão:** o LLM tem agência apenas para formular/refinar os termos de busca de notícias; métricas e
@@ -208,11 +207,10 @@ gráficos permanecem determinísticos.
 **Porquê:** dá comportamento genuinamente "agêntico" onde é seguro (formular boa query é tarefa de
 linguagem), sem expor os números à variabilidade do modelo. Um ReAct de escolha livre de tools seria
 mais difícil de auditar e garantir guardrails (contra P1/P2/P5); o determinístico total seria pouco
-agêntico para o enunciado. Ver `decisoes-arquiteturais.md` §18.
+agêntico para o enunciado.
 
 ### ADR-10 — Segurança mínima da API (vs autenticação de usuários / API aberta)
 **Decisão:** middleware com API key + rate limiting + CORS; **sem** autenticação de usuários.
 **Porquê:** uma API que dispara LLM exposta sem proteção é um furo de guardrail e de custo. A proteção
 mínima fecha isso e pontua em "Guardrails". Já um sistema de login/cadastro/roles seria **fuga ao
-escopo** (o desafio não tem gestão de usuários) e consumiria tempo sem ser avaliado. Ver
-`decisoes-arquiteturais.md` §19.
+escopo** (o desafio não tem gestão de usuários) e consumiria tempo sem ser avaliado.

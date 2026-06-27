@@ -75,7 +75,6 @@ Metodologia: estrutura **Kiro** + **constitution** (conceito do GitHub Spec Kit)
 | [`.kiro/specs/srag-report-agent/design.md`](.kiro/specs/srag-report-agent/design.md) | Arquitetura + decisões (ADRs) |
 | [`.kiro/specs/srag-report-agent/data-and-metrics.md`](.kiro/specs/srag-report-agent/data-and-metrics.md) | Colunas DATASUS + definição exata das 4 métricas |
 | [`.kiro/specs/srag-report-agent/tasks.md`](.kiro/specs/srag-report-agent/tasks.md) | Plano de implementação |
-| [`docs/decisoes-arquiteturais.md`](docs/decisoes-arquiteturais.md) | Justificativa **detalhada** de cada decisão (incl. FastAPI vs Django, LLM, etc.) |
 
 ## Como esta solução endereça os critérios de avaliação
 | Critério | Onde |

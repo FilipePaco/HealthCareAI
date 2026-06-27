@@ -16,7 +16,6 @@ gráficos e comentários embasados. Deploy no Railway. **É uma PoC; o conteúdo
 - `.kiro/specs/srag-report-agent/design.md` — arquitetura + ADRs.
 - `.kiro/specs/srag-report-agent/data-and-metrics.md` — **definição exata das métricas e colunas**.
 - `.kiro/specs/srag-report-agent/tasks.md` — plano de implementação (siga a ordem).
-- `docs/decisoes-arquiteturais.md` — justificativa detalhada de cada decisão.
 
 ## Stack
 Python 3.11+ · **LangGraph** (orquestração) · **Gemini 2.5 Flash** via `init_chat_model`
