@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 from src.agent.rag import gather_relevant_news
 from src.agent.state import ReportState
 from src.db import queries as q
+from src.db.reports_store import init_reports, save_report
 from src.governance.audit import AuditTrail, init_audit
 from src.report.composer import compose_commentary, formulate_query
 from src.agent.prompts import scenario_text
@@ -32,13 +33,28 @@ def _metrics_node(engine: Engine, trail: AuditTrail):
     return node
 
 
+_DEFAULT_QUERY = "SRAG síndrome respiratória aguda grave notícias Brasil"
+_LLM_UNAVAILABLE = (
+    "Comentário do agente indisponível no momento (modelo de linguagem temporariamente "
+    "inacessível). As métricas e os gráficos permanecem válidos."
+)
+
+
 def _news_node(trail: AuditTrail):
     def node(state: ReportState) -> dict:
         metrics = state["metrics"]
-        query = formulate_query(metrics)  # agência: LLM formula a busca
-        trail.record("formulate_query", {"search_query": query})
-        news = gather_relevant_news(scenario_query=scenario_text(metrics), search_query=query, k=4)
-        trail.record("gather_news", {"count": len(news), "sources": [n.get("url") for n in news]})
+        try:  # agência: LLM formula a busca (degrada para query padrão se o LLM falhar)
+            query = formulate_query(metrics)
+            trail.record("formulate_query", {"search_query": query})
+        except Exception as exc:  # noqa: BLE001
+            query = _DEFAULT_QUERY
+            trail.record("formulate_query.error", {"error": str(exc), "fallback": query})
+        try:
+            news = gather_relevant_news(scenario_query=scenario_text(metrics), search_query=query, k=4)
+            trail.record("gather_news", {"count": len(news), "sources": [n.get("url") for n in news]})
+        except Exception as exc:  # noqa: BLE001 - falha de busca/embeddings cai no fallback (R4.4)
+            news = []
+            trail.record("gather_news.error", {"error": str(exc)})
         return {"search_query": query, "news": news}
 
     return node
@@ -46,8 +62,14 @@ def _news_node(trail: AuditTrail):
 
 def _compose_node(trail: AuditTrail):
     def node(state: ReportState) -> dict:
-        commentary = compose_commentary(state["metrics"], state.get("news", []))
-        data = commentary.model_dump()
+        try:
+            data = compose_commentary(state["metrics"], state.get("news", [])).model_dump()
+        except Exception as exc:  # noqa: BLE001 - LLM indisponível -> relatório degradado, não quebra
+            trail.record("compose.error", {"error": str(exc)})
+            return {
+                "commentary": {"per_metric": [], "synthesis": _LLM_UNAVAILABLE, "sources": []},
+                "sources": [],
+            }
         sources = sorted(
             {s for c in data["per_metric"] for s in c["sources"]} | set(data["sources"])
         )
@@ -72,9 +94,10 @@ def build_graph(engine: Engine, trail: AuditTrail):
 def generate_report(engine: Engine, report_id: str | None = None) -> dict:
     """Roda o grafo e monta o relatório completo (métricas + comentário + fontes + auditoria)."""
     init_audit(engine)
+    init_reports(engine)
     trail = AuditTrail(engine) if report_id is None else AuditTrail(engine, report_id=report_id)
     final = build_graph(engine, trail).invoke({"report_id": trail.report_id})
-    return {
+    report = {
         "report_id": trail.report_id,
         "data_ref": final.get("data_ref"),
         "metrics": final.get("metrics", {}),
@@ -83,3 +106,5 @@ def generate_report(engine: Engine, report_id: str | None = None) -> dict:
         "sources": final.get("sources", []),
         "disclaimer": DISCLAIMER,
     }
+    save_report(engine, report)
+    return report

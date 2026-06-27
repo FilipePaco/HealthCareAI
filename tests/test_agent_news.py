@@ -55,5 +55,10 @@ def test_rag_ranks_relevant_first() -> None:
 def test_chat_smoke() -> None:
     from src.agent.llm import get_chat
 
-    resp = get_chat().invoke("Responda apenas com a palavra OK.")
+    try:
+        resp = get_chat().invoke("Responda apenas com a palavra OK.")
+    except Exception as exc:  # noqa: BLE001
+        if any(s in str(exc) for s in ("503", "UNAVAILABLE", "429")):
+            pytest.skip(f"LLM temporariamente indisponível: {exc}")
+        raise
     assert "OK" in resp.content.upper()

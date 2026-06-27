@@ -6,9 +6,43 @@ automatizada e **auditável**, um relatório com métricas, gráficos e comentá
 
 > ⚠️ Prova de Conceito de caráter educacional. O conteúdo gerado **não constitui orientação médica**.
 
+## Como rodar (local, com Docker)
+
+Pré-requisitos: Docker + Docker Compose. Copie `.env.example` para `.env` e preencha
+`GOOGLE_API_KEY` e `TAVILY_API_KEY` (o `docker compose` lê o `.env` automaticamente).
+
+```bash
+# 1. sobe banco + API + Streamlit
+docker compose up --build
+
+# 2. popula o banco com dados sintéticos (em outro terminal)
+docker compose exec api python -m src.etl.seed --rows 5000
+
+# 3. acesse:
+#    - Streamlit (UI):     http://localhost:8501   -> botão "Gerar relatório"
+#    - API (Swagger):      http://localhost:8000/docs
+```
+
+Para usar **dados reais** do DATASUS no lugar do seed: baixe o CSV de
+[SRAG 2021-2024](https://opendatasus.saude.gov.br/dataset/srag-2021-a-2024) e rode
+`python -m src.etl.load` apontando para o arquivo (ver `src/etl/load.py::run_etl`).
+
+### Sem Docker (venv)
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# suba um Postgres e ajuste DATABASE_URL no .env
+python -m src.etl.seed --rows 5000
+uvicorn src.api.main:app --reload          # API em :8000
+streamlit run app_streamlit.py             # UI em :8501
+pytest                                      # testes (integração pula sem Postgres)
+```
+
+> As chamadas protegidas exigem o header `X-API-Key` (valor de `API_KEY`). O Streamlit já o envia.
+
 ## Status
-🚧 **Fase de especificação (SDD).** O design está completo em `.kiro/`; a implementação segue o
-`tasks.md`. Este README será expandido com instruções de execução conforme o código avança.
+🛠️ **Em implementação.** Núcleo funcional: ETL, métricas, gráficos, agente (LangGraph + RAG),
+auditoria, API e UI. Pendentes: dados reais do DATASUS em produção e deploy no Railway (ver `tasks.md`).
 
 ## Métricas e entregas do relatório
 - Taxa de aumento de casos · taxa de mortalidade · taxa de ocupação de UTI · taxa de vacinação.

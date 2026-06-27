@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.engine import Engine
 
 from src.agent.graph import generate_report
@@ -16,7 +16,9 @@ from src.agent.tools import chart_tool
 from src.api.security import require_api_key
 from src.db import queries as q
 from src.db.models import get_engine
+from src.db.reports_store import get_report
 from src.governance.audit import AuditTrail, init_audit
+from src.report.pdf import build_pdf
 
 router = APIRouter()
 _engine: Engine | None = None
@@ -83,6 +85,34 @@ def chart_monthly() -> Response:
 def create_report() -> dict:
     """Roda o agente LangGraph: métricas + notícias(RAG) + comentário com grounding."""
     return generate_report(engine())
+
+
+@router.get("/reports/{report_id}", dependencies=[Depends(require_api_key)])
+def read_report(report_id: str) -> dict:
+    report = get_report(engine(), report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="relatório não encontrado")
+    return report
+
+
+@router.get("/reports/{report_id}/pdf", dependencies=[Depends(require_api_key)])
+def report_pdf(report_id: str) -> Response:
+    report = get_report(engine(), report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="relatório não encontrado")
+    charts: dict[str, bytes] = {}
+    ref = report.get("data_ref")
+    if ref:
+        d = date.fromisoformat(str(ref)[:10])
+        with engine().connect() as conn:
+            charts["daily"] = chart_tool.daily_chart(q.serie_diaria(conn, d), d)
+            charts["monthly"] = chart_tool.monthly_chart(q.serie_mensal(conn, d), d)
+    pdf = build_pdf(report, charts)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="relatorio_{report_id}.pdf"'},
+    )
 
 
 @router.get("/audit/{report_id}", dependencies=[Depends(require_api_key)])

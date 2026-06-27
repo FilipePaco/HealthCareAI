@@ -41,10 +41,12 @@
 ## Fase 5 — API + interface (D4)
 - [x] T5.1 — `api/main.py` + `POST /reports` (roda o agente: comentário + fontes) + `/charts/*.png`.
   `GET /reports/{id}` com persistência do relatório fica como opcional (o trilho vai por `/audit/{id}`). (R8.1)
-- [ ] T5.2 — `report/pdf.py` + `GET /reports/{id}/pdf`. (R8.2)
+- [x] T5.2 — `report/pdf.py` (ReportLab) + `GET /reports/{id}` + `GET /reports/{id}/pdf` + persistência
+  (`db/reports_store.py`). (R8.1, R8.2)
 - [x] T5.3 — `GET /metrics`, `GET /data/daily`, `GET /data/monthly`, `GET /audit/{id}`. (R8.3, R6.3)
 - [x] T5.5 — `api/security.py`: middleware API key (`X-API-Key`) + rate limiting (slowapi) + CORS. (R7.4–R7.7)
-- [ ] T5.4 — `app_streamlit.py` consumindo a API (botão gerar → métricas + gráficos + comentários + PDF). (R8.4)
+- [x] T5.4 — `app_streamlit.py` consumindo a API (botão gerar → métricas + gráficos + comentários + PDF). (R8.4)
+- [x] T5.6 — `etl/seed.py`: dados sintéticos para usar/testar sem o CSV real. (apoio)
 
 ## Fase 6 — Deploy + entrega (D5)
 - [ ] T6.1 — Deploy no Railway via **Dockerfile** (build da imagem) + Postgres gerenciado; rodar ETL
