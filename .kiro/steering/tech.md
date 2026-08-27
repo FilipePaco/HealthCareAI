@@ -9,6 +9,9 @@ Decisões de stack travadas para a PoC. Justificativas detalhadas estão em
 | Orquestração do agente | **LangGraph** | Grafo de estado explícito → rastreabilidade/auditoria (P2) |
 | Agência (notícias) | **LLM *tool-calling*** (`bind_tools`) em laço | O modelo decide chamar/refinar a busca `buscar_noticias` (ADR-11) |
 | Observabilidade de custo | **`UsageTracker`** (interno) | Mede tokens de LLM + buscas Tavily e estima custo por relatório (P9/ADR-12) |
+| Auditoria (camada 1) | **`audit_log`** no Postgres do projeto | *System of record* append-only, SQL, sem dependência de terceiro (P2/ADR-13) |
+| Tracing do agente (camada 2) | **Langfuse Cloud** (tier gratuito; **sem infra própria**) | Custo/latência/prompt por chamada; OSS → self-host continua sendo porta de saída (ADR-13) |
+| Instrumentação do tracing | **`CallbackHandler`** do LangChain + **OTLP** opcional | Callback cobre o grafo; OTel cobre o que ele não vê (embeddings do RAG) |
 | LLM (default) | **Gemini 2.5 Flash-Lite** via `init_chat_model` | Free tier com cota diária maior que o 2.5-flash (que é 20 req/dia); abstraído (P8) |
 | Banco de dados | **PostgreSQL** (Railway) | Tool SQL parametrizada; separa ETL de runtime (P6) |
 | Busca de notícias | **Tavily** (tool) | API de busca desenhada para agentes, retorna fonte+data |
@@ -29,7 +32,7 @@ Decisões de stack travadas para a PoC. Justificativas detalhadas estão em
 ## Variáveis de ambiente (contrato)
 ```
 LLM_PROVIDER=google_genai        # google_genai | openai | anthropic
-LLM_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-2.5-flash-lite
 GOOGLE_API_KEY=...               # ou OPENAI_API_KEY / ANTHROPIC_API_KEY
 TAVILY_API_KEY=...
 DATABASE_URL=postgresql://...    # injetada pelo Railway
@@ -43,4 +46,18 @@ NEWS_RETRIEVE_K=6                # top-k de notícias recuperadas pelo RAG (cobe
 LLM_INPUT_COST_PER_1M=0.10       # tarifa estimada USD / 1M tokens de entrada (P9)
 LLM_OUTPUT_COST_PER_1M=0.40      # tarifa estimada USD / 1M tokens de saída
 TAVILY_COST_PER_SEARCH=0.008     # tarifa estimada USD / busca (free tier = 0)
+
+# --- Auditoria (camada 1) ---
+AUDIT_RETENTION_DAYS=180         # prazo de retenção do audit_log (LGPD pede prazo definido)
+
+# --- Tracing / Langfuse (camada 2 — opcional; ausente ou false = no-op) ---
+TRACING_ENABLED=false
+LANGFUSE_HOST=https://cloud.langfuse.com   # (ou .../eu); self-host só se um dia justificar
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_SAMPLE_RATE=1.0         # 1.0 na PoC; reduzir se o volume crescer
 ```
+
+> **Contrato de degradação (R11.3):** com `TRACING_ENABLED=false`, ou sem as chaves, ou com o
+> coletor fora do ar, o comportamento da aplicação é **idêntico ao de hoje**. O tracing nunca é
+> caminho crítico.

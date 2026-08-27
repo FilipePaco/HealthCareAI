@@ -68,9 +68,59 @@
 - [ ] T6.3 — README final: arquitetura, decisões, governança, guardrails, dados sensíveis, como rodar.
 - [ ] T6.4 — Revisão de clean code (Ruff), remoção de segredos, repositório público.
 
+## Fase 8 — Auditoria em duas camadas + tracing Langfuse (ADR-13)
+
+> Ordem pensada para que cada task entregue valor sozinha. T8.1–T8.3 valem mesmo que o Langfuse
+> nunca suba; T8.4–T8.7 são a camada 2. Nenhuma delas altera o resultado do relatório.
+
+### Camada 1 — endurecer o trilho que já existe
+- [ ] T8.1 — `governance/audit.py`: evento **tipado** (`StrEnum` + dataclass com `node`, `status`,
+  `duration_ms`, `parent_id`) e **escrita em lote** (buffer + `INSERT` múltiplo no fim, com flush em
+  exceção). Substitui a transação-por-evento de hoje. (R6.5)
+- [ ] T8.2 — Context manager `trail.span(...)` que cronometra e captura exceção automaticamente;
+  migrar os `record(...".error")` manuais de `graph.py` e `news_agent.py` para ele. Aproveita
+  `record_call`, hoje código morto. (R6.5)
+- [ ] T8.3 — Registrar **prompt/resposta do LLM** (truncados + hash) e a **proveniência** (git SHA,
+  provedor/modelo, versão dos prompts, referência da carga da ETL). Fecha o gap do P2. (R6.4, R6.6)
+- [ ] T8.4 — Retenção e imutabilidade: `AUDIT_RETENTION_DAYS` na config, índice em `ts`, rotina de
+  purga e `REVOKE UPDATE, DELETE` para o usuário da aplicação. (R6.7)
+- [ ] T8.5 — Gerar `docs/auditoria.md` **a partir do enum** de eventos (hoje a doc já divergiu do
+  código: descreve `formulate_query`/`gather_news`, que não são mais emitidos). (R6.3)
+
+### Pré-requisitos de cobertura (valem para as duas camadas)
+- [x] T8.6 — `news_agent.py`: invocar `buscar_noticias.invoke({"query": ...}, config=config)` em vez de
+  chamar `search_news` diretamente — a tool ligada por `bind_tools` nunca é executada de fato hoje,
+  então a busca não aparece como span. (R11.4)
+- [x] T8.7 — `rag.py`: instrumentar embeddings (retrieval como runnable **ou** instrumentação OTel) e
+  **contabilizá-los** no `UsageTracker`; registrar modelo e tarifa efetivos no `usage`. Corrige a
+  subestimação atual do custo. (R10.4, R10.5, R11.5)
+
+### Camada 2 — Langfuse
+- [x] T8.8 — `governance/tracing.py`: `get_callbacks(report_id)` devolvendo `[]` quando desligado ou
+  sem credenciais; nenhum outro módulo importa `langfuse`. Config nova em `config.py`
+  (`TRACING_ENABLED`, `LANGFUSE_*`, `LANGFUSE_SAMPLE_RATE`). (R11.1, R11.3, R11.8)
+- [x] T8.9 — Ligar no `graph.py`: `invoke(..., config={"callbacks": ...})`, com `report_id` como
+  identificador do trace e tags de ambiente/versão. (R11.2, R11.6)
+- [x] T8.10 — `requirements-obs.txt` (extras opcionais) + ajuste do Dockerfile/compose para instalá-los
+  só quando o tracing for usado — a imagem base continua enxuta (§16/§17). (R11.1)
+- [ ] T8.11 — Espelhar na camada 2 os **eventos de decisão** (`stop`, `max_iters`, `fallback`,
+  `selected`) como eventos do trace: instrumentação automática captura chamadas, não intenções. (ADR-13)
+- [ ] T8.12 — *(ação manual do dev)* Criar projeto no **Langfuse Cloud** (tier gratuito), gerar o par
+  de chaves e preencher `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` + `TRACING_ENABLED=true` no `.env`
+  e no service `api` do Railway. Passo a passo já escrito em `DEPLOY.md`. (R9.1)
+- [x] T8.13 — Testes da camada 2: `tracing` inativo sem credenciais/SDK, `flush` silencioso, `report_id`
+  como trace id, e embeddings entrando no `UsageTracker` (`tests/test_tracing.py`,
+  `tests/test_rag_usage.py`). Os testes de evento tipado/lote acompanham T8.1. (R11.3, R10.5)
+
 ## Riscos / pontos de atenção
 - **Qualidade dos dados DATASUS:** maior fonte de incerteza; reservar buffer na Fase 1.
 - **Definição exata das métricas:** confirmar denominadores (ex.: mortalidade sobre casos vs sobre
   internados) contra o dicionário — decisão a documentar no README.
 - **Free tier do LLM:** monitorar limites do Gemini; abstração permite trocar se estourar.
 - **Volume (165k linhas):** usar views/índices; não carregar tudo em memória no runtime.
+- **Teto do tier gratuito do Langfuse:** 50k units/mês e 30 dias de retenção. Folgado para a PoC
+  (~2.000 relatórios/mês), mas se o volume subir, o tracing simplesmente para de ingerir — sem
+  cobrança surpresa e **sem afetar a camada 1**. Acompanhar o consumo na UI (ADR-13).
+- **Self-host descartado por custo:** ~6 services e US$ 30–40/mês no Railway, contra ~US$ 10 da
+  aplicação inteira. Reavaliar só se surgir exigência de perímetro ou retenção longa — a migração é
+  trocar `LANGFUSE_HOST`.

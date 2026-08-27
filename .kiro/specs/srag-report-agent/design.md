@@ -29,7 +29,8 @@ flowchart TB
     end
 
     subgraph GOV["Governança (transversal)"]
-        AUDIT[(Audit log<br/>decisões + tools + LLM)]
+        AUDIT[(Camada 1 — audit_log<br/>Postgres do projeto<br/>append-only, retenção definida)]
+        TRACE[[Camada 2 — Langfuse<br/>traces, prompts, latência,<br/>custo por chamada]]
     end
 
     subgraph API["API FastAPI (API-first)"]
@@ -42,7 +43,9 @@ flowchart TB
 
     UI[Streamlit / Front futuro] --> API
     API --> ORCH
-    ORCH -.registra.-> AUDIT
+    ORCH -.registra sempre.-> AUDIT
+    ORCH -.traça se habilitado.-> TRACE
+    AUDIT -.mesmo report_id.-> TRACE
     API --> AUDIT
     PDF[Relatório PDF] --> EP2
 ```
@@ -111,10 +114,22 @@ das 4 métricas**, uma explicação contextual própria ancorada na métrica e/o
 inclui os guardrails de saída (disclaimer de PoC/não-orientação-médica). A LLM é acessada por
 `src/agent/llm.py` via `init_chat_model`, permitindo troca de provedor por env var (P8).
 
-### 2.6 Governança / Auditoria (transversal)
-`src/governance/audit.py` intercepta toda chamada de tool e LLM, persistindo em tabela `audit_log`
-(ou JSONL) o trilho: requisição → parâmetros → resultados → fontes → id do relatório. Exposto por
-`GET /audit/{id}`.
+### 2.6 Governança / Auditoria — camada 1 (transversal)
+`src/governance/audit.py` intercepta toda chamada de tool e LLM, persistindo na tabela `audit_log`
+o trilho: requisição → parâmetros → resultados → fontes → id do relatório. Exposto por `GET /audit/{id}`.
+
+Esta é a **camada 1**: o *system of record* de conformidade. Características que a definem (P2, ADR-13):
+- **Independente de terceiros.** Vive no mesmo Postgres da aplicação. Nenhuma obrigação de auditoria
+  depende de um SaaS estar no ar ou de um plano contratado.
+- **Append-only.** A aplicação recebe `INSERT`/`SELECT`; `UPDATE`/`DELETE` são revogados (R6.7).
+- **Retenção explícita.** `AUDIT_RETENTION_DAYS`, com purga documentada — LGPD pede prazo definido.
+- **Eventos tipados** (R6.5): vocabulário fechado (`StrEnum`), com `node`, `status`, `duration_ms` e
+  evento pai. O `docs/auditoria.md` passa a ser **derivado do enum**, e não escrito à mão — hoje ele
+  documenta eventos que o código já não emite.
+- **Escrita em lote.** Os eventos são acumulados em memória e gravados num `INSERT` múltiplo ao final
+  (com flush em caso de exceção), em vez de uma transação por evento no caminho crítico do request.
+- **Proveniência** (R6.6): git SHA, provedor/modelo, versão dos prompts e referência da carga da ETL.
+- **Redação por allowlist**: só campos explicitamente permitidos entram no payload (P4).
 
 ### 2.7 API (FastAPI) e interface
 API-first: o relatório é um recurso. Endpoints:
@@ -138,9 +153,48 @@ P7) calcula um **custo estimado em USD** — explicitamente uma estimativa. O re
 JSON do relatório (`usage`), (b) registrado no trilho de auditoria e (c) **agregado** via `GET /usage`
 (totais + últimos relatórios), permitindo acompanhar o gasto acumulado. Atende R10.x e o princípio P9.
 
+### 2.9 Tracing do agente — camada 2 (Langfuse)
+`src/governance/tracing.py` expõe uma única função — `get_callbacks(report_id)` — que devolve os
+callbacks de tracing, ou **uma lista vazia** quando `TRACING_ENABLED=false` ou faltam credenciais.
+O grafo é invocado com `config={"callbacks": get_callbacks(report_id)}`; nenhum outro módulo importa
+`langfuse` (R11.8, mesmo espírito do P8 para LLM).
+
+**O que a camada 2 acrescenta** ao que a camada 1 já registra:
+
+| Informação | Camada 1 hoje | Com a camada 2 |
+|---|---|---|
+| Prompt e resposta bruta do LLM | ausente (gap do P2) | completos, por chamada |
+| Tokens e custo | só agregado por relatório | por chamada, com preço por modelo |
+| Latência | ausente | por nó e por chamada |
+| Estrutura | lista plana | árvore (nó → LLM → tool → retrieval) |
+| Parâmetros do modelo | ausente | modelo, temperatura, `bind_tools` |
+| Comparação entre execuções / replay | ausente | nativo |
+
+**O que a camada 2 *não* captura sozinha** — e por isso a camada 1 continua obrigatória: as
+**decisões semânticas** do agente (`news_agent.stop`, `max_iters`, entrada em `fallback`, seleção do
+top-k). Instrumentação automática enxerga chamadas, não intenções. Esses eventos seguem sendo
+emitidos explicitamente, nas duas camadas.
+
+**Dois ajustes de código são pré-requisito de cobertura** (achados da revisão do código atual):
+1. `run_news_agent` chama `search_news(query)` **diretamente**, embora `buscar_noticias` esteja
+   vinculada via `bind_tools`. A tool nunca é de fato invocada, então nenhum handler enxerga um span
+   de tool. Passar a invocá-la (`.invoke(..., config=...)`) resolve o trace e torna o laço idiomático
+   (R11.4).
+2. `rag.py` usa `store.add_documents` / `store.similarity_search` diretamente — chamadas fora do
+   sistema de callbacks do LangChain. O `CallbackHandler` **não** captura os embeddings; instrumentação
+   OTel (que faz *patch* nas classes) captura. Daí a instrumentação híbrida: callback para o grafo,
+   OTLP para o resto. O mesmo ajuste corrige a subestimação de custo (R10.5/R11.5).
+
+**Onde o Langfuse roda.** No **Langfuse Cloud** (tier gratuito) — **nenhuma infraestrutura é
+provisionada por este projeto**. O acoplamento é de três variáveis de ambiente; do ponto de vista
+operacional, é mais um serviço externo consumido por API, como o Tavily. O self-host foi avaliado e
+descartado para a PoC por custo desproporcional; ver ADR-13 para os números e para o gatilho de
+reavaliação.
+
 ## 3. Fluxo de uma requisição de relatório
 1. Cliente chama `POST /reports`.
-2. API instancia o grafo LangGraph com um `report_id` e abre o contexto de auditoria.
+2. API instancia o grafo LangGraph com um `report_id`, abre o contexto de auditoria (camada 1) e
+   obtém os callbacks de tracing (camada 2; lista vazia se desligada). O `report_id` identifica ambos.
 3. `gather_metrics` executa as 4 queries parametrizadas → métricas determinísticas.
 4. `gather_charts` gera os 2 gráficos a partir das views.
 5. `gather_news`: o LLM, com a ferramenta `buscar_noticias` vinculada (`bind_tools`), roda um **laço
@@ -151,8 +205,10 @@ JSON do relatório (`usage`), (b) registrado no trilho de auditoria e (c) **agre
 6. `compose_report` chama o LLM para gerar, **por métrica**, a explicação ancorada, mais a síntese —
    com grounding e disclaimer.
 7. O **`UsageTracker`** consolida tokens/chamadas de LLM e buscas Tavily da requisição, com custo
-   estimado (§2.8). Resultado persistido (incl. `usage`); auditoria fechada; JSON retornado (PDF sob
-   demanda em `/pdf`).
+   estimado (§2.8), incluindo os embeddings do RAG e o modelo/tarifa efetivos (R10.4/R10.5).
+8. Resultado persistido (incl. `usage`); o trilho de auditoria é gravado em lote e fechado; o trace é
+   despachado em background. JSON retornado (PDF sob demanda em `/pdf`). Falha no despacho do trace
+   é registrada e ignorada — o relatório não depende dela (R11.3).
 
 ## 4. Tratamento de dados sensíveis (resumo P4)
 - Seleção mínima de colunas + descarte de identificadores na ETL.
@@ -266,3 +322,77 @@ relatório e estima o custo com **tarifas configuráveis**; exposto no relatóri
 reforça governança (P2) e controle de custo (já endereçado por rate limit em ADR-10). Medir no próprio
 processo dá granularidade por relatório que o billing externo não oferece, a custo de manter tarifas de
 referência atualizáveis por env (P7). É **estimativa**, não fatura — e é rotulada como tal.
+
+### ADR-13 — Auditoria em duas camadas, com Langfuse como tracing (vs LangSmith / vs trilho único)
+**Decisão:** manter o `audit_log` como **camada 1** (registro de conformidade) e adicionar **Langfuse
+Cloud** (tier gratuito, **sem infraestrutura própria**) como **camada 2** (observabilidade), unidas
+pelo `report_id`. A camada 2 é opcional em runtime (`TRACING_ENABLED`) e isolada em
+`src/governance/tracing.py`.
+
+**Alternativas consideradas:**
+- **(a) Manter só o trilho manual.** Barato, mas deixa três buracos conhecidos: nenhum registro de
+  prompt/resposta do LLM (o P2 promete e não entrega), nenhuma medição de latência, e custo
+  subestimado por ignorar embeddings. Também não dá replay nem comparação entre execuções.
+- **(b) Substituir o trilho por LangSmith.** Menor esforço absoluto — três variáveis de ambiente e
+  zero código, com a melhor visualização de LangGraph do mercado (é da mesma empresa). Descartado por
+  três razões, todas de governança: é SaaS proprietário, então prompts de um sistema de saúde saem do
+  perímetro; a **retenção é função do plano contratado**, e um registro de auditoria que expira quando
+  o plano diz não é registro de auditoria; e o self-host só existe no tier Enterprise.
+- **(c) Substituir o trilho por Langfuse.** Rejeitado pelo mesmo motivo de fundo que (b): trocar uma
+  tabela Postgres append-only, sob nosso controle, por uma API de terceiro é trocar garantia por
+  ferramenta. Além disso, instrumentação automática **não captura as decisões semânticas** do agente
+  (`stop`, `max_iters`, `fallback`, seleção do top-k) — exatamente o que o desafio chama de "registro
+  de decisões dos agentes".
+- **(d) OpenInference/Phoenix ou OpenLLMetry puros.** Vendor-neutro e ótimos tecnicamente; ficam como
+  camada de *instrumentação* dentro da decisão (o Langfuse ingere OTLP), não como backend, porque não
+  entregam gestão de prompts, datasets e scores no mesmo lugar.
+
+**Porquê Langfuse (e não LangSmith), mesmo consumindo o Cloud:** é o único dos candidatos que é
+**open source e self-hostável de forma suportada**. Consumimos o serviço gerenciado por pragmatismo de
+custo, mas a **porta de saída existe e é barata** — se a exigência de perímetro aparecer, muda-se
+`LANGFUSE_HOST` e o mesmo código passa a falar com uma instância nossa. Com o LangSmith essa porta não
+existe fora do tier Enterprise, e a retenção seria função do plano contratado. Além disso: aceita
+ingestão OTLP, cobrindo com instrumentação por *patch* o que o `CallbackHandler` não vê (embeddings do
+RAG); e emite spans/eventos customizados como cidadão de primeira classe, então os eventos de decisão
+que já existem podem ser espelhados na camada 2.
+
+**O que trafega para fora:** apenas o que já é agregado por construção — valores das métricas
+(`scenario_text`, `composer_user_prompt`), trechos de notícia pública e o texto gerado. Microdados
+nunca entram num prompt, então não há o que vazar por essa via (P4/R11.7).
+
+**Onde roda: Langfuse Cloud (decisão para a PoC).** O self-host foi avaliado com dados e descartado.
+Pesquisa de agosto/2026:
+- A versão atual é a **v4** e a arquitetura exige **sempre** seis componentes — `langfuse-web`,
+  `langfuse-worker`, Postgres, **ClickHouse**, Redis/Valkey e storage S3-compatível. **Não existe
+  opção single-container**; é decisão de arquitetura do produto, não de configuração.
+- A rota leve morreu: a **v2** rodava com Postgres + um container em ~4 GB, mas recebeu security
+  updates apenas **até o fim do Q1/2025**.
+- **Local:** a doc recomenda **4 cores / 16 GiB** para docker compose (8 GiB é o piso, só para
+  avaliação). O ClickHouse **dobrou** os requisitos da v2 para a v3. Somado aos containers que a PoC
+  já roda, seria ~10–12 GB alocados no Docker Desktop — desproporcional para 4 métricas e 2 gráficos.
+- **Railway:** existe template e guia, mas (i) o template referenciado pela doc oficial deploya **v3,
+  não v4**, e a Langfuse afirma não haver template v4; (ii) é **community-maintained** — "não testamos
+  sistematicamente, o suporte é best-effort"; (iii) o Railway cobra **RAM a US$ 10/GB/mês**, então um
+  stack de 3–4 GB custa **US$ 30–40/mês** — a observabilidade custaria **3–4× a aplicação observada**.
+
+**Decisão:** **Langfuse Cloud, tier Hobby (gratuito)** — 50k units/mês, retenção de 30 dias, 2
+usuários, sem cartão. Um relatório desta PoC gera na ordem de 15–30 observations, o que dá ~2.000
+relatórios/mês dentro do teto: folga de sobra. O projeto **não provisiona nem mantém infraestrutura
+alguma** para observabilidade; o acoplamento são três variáveis de ambiente.
+
+**Por que a retenção de 30 dias não é problema — e por que isso valida o desenho em duas camadas.**
+Se o Langfuse fosse o registro de auditoria, expirar em 30 dias seria inaceitável. Como ele é a camada
+2, e o `audit_log` (camada 1, retenção nossa, no nosso Postgres) é o *system of record*, a expiração
+é irrelevante: nada de valor probatório vive só lá. **É precisamente a separação em duas camadas que
+torna o tier gratuito uma escolha segura** — e que teria tornado a alternativa (c) perigosa.
+
+**Gatilho de reavaliação do self-host:** volume perto do teto de units, exigência formal de que
+prompts não trafeguem para fora do perímetro, ou necessidade de retenção longa na camada 2. Nesse
+caso, self-host em projeto Railway separado, com Postgres próprio (nunca o banco do SRAG). **A
+migração é trocar `LANGFUSE_HOST`** — o código é idêntico nos dois cenários.
+
+**Riscos e mitigações:** (i) tracing indisponível não pode quebrar relatório → despacho assíncrono e
+`get_callbacks()` que devolve `[]` em qualquer falha (R11.3); (ii) lock-in → todo o acoplamento vive
+em um arquivo, e a ingestão é OTLP (R11.8); (iii) vazamento de dado sensível pelo prompt → os prompts
+são montados a partir de agregados (`scenario_text`, `composer_user_prompt`), o que já é garantido
+por P4 na origem.
