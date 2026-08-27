@@ -53,13 +53,20 @@ vista de deploy, é mais um serviço externo consumido por API, exatamente como 
 1. Crie uma conta em [cloud.langfuse.com](https://cloud.langfuse.com) (ou o endpoint da região EU) e
    um projeto. Sem cartão.
 2. Em **Settings → API Keys**, gere o par: `pk-lf-…` (public) e `sk-lf-…` (secret).
-3. No projeto `HealthCareAI` do Railway, service **`api`**, adicione:
+3. **No Railway, marque o build para incluir os extras.** O pacote `langfuse` **não** entra na imagem
+   base (para mantê-la enxuta), então em *Settings → Build* adicione o build arg
+   `INSTALL_OBS=true` — ou, mais simples, mova a linha `langfuse>=3.0` de `requirements-obs.txt` para
+   o `requirements.txt`. **Sem isso, `TRACING_ENABLED=true` não tem efeito e nenhum erro aparece:**
+   o tracing degrada em silêncio (é o contrato do R11.3). Localmente o `docker compose` já passa o
+   build arg; no venv basta `pip install -r requirements-obs.txt`.
+
+4. No projeto `HealthCareAI` do Railway, service **`api`**, adicione:
    - `TRACING_ENABLED = true`
    - `LANGFUSE_HOST = https://cloud.langfuse.com`
    - `LANGFUSE_PUBLIC_KEY = pk-lf-...`
    - `LANGFUSE_SECRET_KEY = sk-lf-...`
    Para rodar local, as mesmas quatro linhas no `.env`.
-4. Gere um relatório e confirme na UI do Langfuse que o trace aparece com o **`report_id`** como
+5. Gere um relatório e confirme na UI do Langfuse que o trace aparece com o **`report_id`** como
    identificador — é ele que liga o trace ao `GET /audit/{report_id}`.
 
 **Limites do tier gratuito:** 50k units/mês, 30 dias de retenção, 2 usuários. Um relatório desta PoC

@@ -14,8 +14,12 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Extras de tracing (camada 2) só entram se pedidos no build — a imagem base segue enxuta.
+ARG INSTALL_OBS=false
+
+COPY requirements.txt requirements-obs.txt ./
+RUN pip install -r requirements.txt \
+    && if [ "$INSTALL_OBS" = "true" ]; then pip install -r requirements-obs.txt; fi
 
 # ---------- Stage 2: runtime ----------
 FROM python:3.11-slim AS runtime

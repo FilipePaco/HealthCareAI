@@ -46,11 +46,19 @@ Cada linha é um evento com `event`, `ts` (timestamp) e `data` (JSON). A sequên
 | Evento | O que registra |
 |---|---|
 | `gather_metrics` | as 4 métricas calculadas + `data_ref` |
-| `formulate_query` | a query de busca que o LLM formulou (agência) |
-| `gather_news` | nº de notícias e as URLs recuperadas |
-| `gather_news.retry` | (se ocorreu) refino da busca com termos amplos |
+| `news_agent.tool_call` | **cada** iteração do laço: a query que o LLM formulou e nº de resultados |
+| `news_agent.stop` | o modelo decidiu encerrar a busca (e por quê) |
+| `news_agent.max_iters` | (se ocorreu) o laço bateu no limite de iterações |
+| `news_agent.selected` | as notícias que o RAG selecionou para embasar o relatório |
+| `news_agent.default_search` | (se ocorreu) o modelo não chamou a tool → busca padrão |
 | `compose` | o comentário gerado e as fontes citadas |
-| `*.error` | (se ocorreu) falha de LLM/busca e o fallback acionado |
+| `usage` | tokens de LLM, embeddings, buscas e custo estimado |
+| `news_agent.error` · `news_agent.llm_error` | (se ocorreu) falha de tool-calling / do modelo |
+| `news_fallback.formulate_query` · `.gather` · `.retry` | (se ocorreu) a busca determinística que substituiu o laço (R4.7) |
+| `compose.error` · `gather_news.error` | (se ocorreu) falha na composição ou na busca |
+
+> Os eventos `news_agent.*` são a **agência do agente** registrada passo a passo: dá para ver quais
+> termos ele escolheu, quantas vezes refinou e quando decidiu parar.
 
 Assim é possível **reconstruir e auditar** como cada número e cada afirmação do relatório foram
 produzidos — atendendo aos requisitos de **governança e transparência**.
@@ -77,7 +85,7 @@ você acha o mesmo relatório nos dois lugares.
 | Para quem | auditor / avaliador | quem desenvolve |
 | Registra | decisões e resultado | mecânica da execução |
 | Onde vive | seu Postgres | serviço externo |
-| Retenção | sua (`AUDIT_RETENTION_DAYS`) | 30 dias no tier gratuito |
+| Retenção | sua (indefinida hoje; prazo configurável previsto na T8.4) | 30 dias no tier gratuito |
 | Pode ser desligado? | não | sim, e é o default |
 
 Se o Langfuse estiver desligado, fora do ar ou sem credenciais, **nada muda**: o relatório é gerado

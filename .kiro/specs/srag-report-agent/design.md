@@ -118,18 +118,23 @@ inclui os guardrails de saída (disclaimer de PoC/não-orientação-médica). A 
 `src/governance/audit.py` intercepta toda chamada de tool e LLM, persistindo na tabela `audit_log`
 o trilho: requisição → parâmetros → resultados → fontes → id do relatório. Exposto por `GET /audit/{id}`.
 
-Esta é a **camada 1**: o *system of record* de conformidade. Características que a definem (P2, ADR-13):
+Esta é a **camada 1**: o *system of record* de conformidade.
+
+**Hoje implementado:**
 - **Independente de terceiros.** Vive no mesmo Postgres da aplicação. Nenhuma obrigação de auditoria
   depende de um SaaS estar no ar ou de um plano contratado.
-- **Append-only.** A aplicação recebe `INSERT`/`SELECT`; `UPDATE`/`DELETE` são revogados (R6.7).
-- **Retenção explícita.** `AUDIT_RETENTION_DAYS`, com purga documentada — LGPD pede prazo definido.
+- Registro de cada nó, de cada iteração do laço de tool-calling e do consumo do relatório.
+- Redação básica: bytes reduzidos ao tamanho, nunca ao conteúdo (P4).
+
+**Alvo, ainda não implementado (T8.1–T8.5):**
+- **Append-only.** `UPDATE`/`DELETE` revogados para o usuário da aplicação (R6.7).
+- **Retenção explícita** com prazo configurável e purga documentada — LGPD pede prazo definido (R6.7).
 - **Eventos tipados** (R6.5): vocabulário fechado (`StrEnum`), com `node`, `status`, `duration_ms` e
-  evento pai. O `docs/auditoria.md` passa a ser **derivado do enum**, e não escrito à mão — hoje ele
-  documenta eventos que o código já não emite.
-- **Escrita em lote.** Os eventos são acumulados em memória e gravados num `INSERT` múltiplo ao final
-  (com flush em caso de exceção), em vez de uma transação por evento no caminho crítico do request.
-- **Proveniência** (R6.6): git SHA, provedor/modelo, versão dos prompts e referência da carga da ETL.
-- **Redação por allowlist**: só campos explicitamente permitidos entram no payload (P4).
+  evento pai. Hoje `event` é string livre. O `docs/auditoria.md` passaria a ser derivado do enum.
+- **Escrita em lote**: hoje é uma transação por evento, no caminho crítico do request.
+- **Proveniência** (R6.6): git SHA, versão dos prompts e referência da carga da ETL.
+- **Prompt e resposta do LLM** no trilho (R6.4) — o que o P2 promete e ainda não é registrado.
+- **Redação por allowlist** em vez da denylist atual.
 
 ### 2.7 API (FastAPI) e interface
 API-first: o relatório é um recurso. Endpoints:
@@ -148,16 +153,19 @@ front-end customizado futuro usaria. Isso satisfaz o requisito de "deixar os end
 ### 2.8 Observabilidade de uso e custo (transversal)
 `src/governance/usage.py` define um **`UsageTracker`** que acompanha, por relatório, o consumo dos dois
 recursos pagos: **LLM** (nº de chamadas e tokens de entrada/saída, lidos do `usage_metadata` de cada
-resposta) e **busca Tavily** (nº de buscas). A partir de **tarifas configuráveis** (`src/config.py`,
+resposta), **embeddings** do RAG (tokens estimados por caracteres, R10.5) e **busca Tavily** (nº de
+buscas). O payload registra também provider, modelo e as tarifas aplicadas (R10.4), sem o que o custo
+fica ininterpretável quando o modelo muda por env var. A partir de **tarifas configuráveis** (`src/config.py`,
 P7) calcula um **custo estimado em USD** — explicitamente uma estimativa. O resultado é (a) anexado ao
 JSON do relatório (`usage`), (b) registrado no trilho de auditoria e (c) **agregado** via `GET /usage`
 (totais + últimos relatórios), permitindo acompanhar o gasto acumulado. Atende R10.x e o princípio P9.
 
 ### 2.9 Tracing do agente — camada 2 (Langfuse)
-`src/governance/tracing.py` expõe uma única função — `get_callbacks(report_id)` — que devolve os
-callbacks de tracing, ou **uma lista vazia** quando `TRACING_ENABLED=false` ou faltam credenciais.
-O grafo é invocado com `config={"callbacks": get_callbacks(report_id)}`; nenhum outro módulo importa
-`langfuse` (R11.8, mesmo espírito do P8 para LLM).
+`src/governance/tracing.py` expõe `tracing_active()`, `get_callbacks()`, `trace_metadata()`,
+`runnable_config()` e `flush()`. O grafo usa apenas `runnable_config(report_id)`, que devolve
+`{"callbacks": [...], "metadata": {...}}` — ou **`{}`** quando `TRACING_ENABLED=false`, faltam
+credenciais ou o SDK falha. Ao fim da requisição, `flush()` despacha o trace. Nenhum outro módulo
+importa `langfuse` (R11.8, mesmo espírito do P8 para LLM).
 
 **O que a camada 2 acrescenta** ao que a camada 1 já registra:
 
@@ -181,9 +189,11 @@ emitidos explicitamente, nas duas camadas.
    de tool. Passar a invocá-la (`.invoke(..., config=...)`) resolve o trace e torna o laço idiomático
    (R11.4).
 2. `rag.py` usa `store.add_documents` / `store.similarity_search` diretamente — chamadas fora do
-   sistema de callbacks do LangChain. O `CallbackHandler` **não** captura os embeddings; instrumentação
-   OTel (que faz *patch* nas classes) captura. Daí a instrumentação híbrida: callback para o grafo,
-   OTLP para o resto. O mesmo ajuste corrige a subestimação de custo (R10.5/R11.5).
+   sistema de callbacks do LangChain, que o `CallbackHandler` **não** captura. Solução adotada: o
+   passo de RAG roda dentro de um `RunnableLambda` nomeado (`rag_rank_articles`), que vira span pelo
+   mecanismo padrão de callbacks — sem depender de instrumentação OTel. O mesmo ajuste corrige a
+   subestimação de custo (R10.5/R11.5). Instrumentação OTLP fica como opção futura, se for preciso
+   granularidade por chamada de embedding.
 
 **Onde o Langfuse roda.** No **Langfuse Cloud** (tier gratuito) — **nenhuma infraestrutura é
 provisionada por este projeto**. O acoplamento é de três variáveis de ambiente; do ponto de vista

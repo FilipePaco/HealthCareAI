@@ -11,7 +11,7 @@ Decisões de stack travadas para a PoC. Justificativas detalhadas estão em
 | Observabilidade de custo | **`UsageTracker`** (interno) | Mede tokens de LLM + buscas Tavily e estima custo por relatório (P9/ADR-12) |
 | Auditoria (camada 1) | **`audit_log`** no Postgres do projeto | *System of record* append-only, SQL, sem dependência de terceiro (P2/ADR-13) |
 | Tracing do agente (camada 2) | **Langfuse Cloud** (tier gratuito; **sem infra própria**) | Custo/latência/prompt por chamada; OSS → self-host continua sendo porta de saída (ADR-13) |
-| Instrumentação do tracing | **`CallbackHandler`** do LangChain + **OTLP** opcional | Callback cobre o grafo; OTel cobre o que ele não vê (embeddings do RAG) |
+| Instrumentação do tracing | **`CallbackHandler`** do LangChain | Cobre o grafo; o RAG roda num `RunnableLambda` para virar span (OTLP fica como opção futura) |
 | LLM (default) | **Gemini 2.5 Flash-Lite** via `init_chat_model` | Free tier com cota diária maior que o 2.5-flash (que é 20 req/dia); abstraído (P8) |
 | Banco de dados | **PostgreSQL** (Railway) | Tool SQL parametrizada; separa ETL de runtime (P6) |
 | Busca de notícias | **Tavily** (tool) | API de busca desenhada para agentes, retorna fonte+data |
@@ -46,9 +46,8 @@ NEWS_RETRIEVE_K=6                # top-k de notícias recuperadas pelo RAG (cobe
 LLM_INPUT_COST_PER_1M=0.10       # tarifa estimada USD / 1M tokens de entrada (P9)
 LLM_OUTPUT_COST_PER_1M=0.40      # tarifa estimada USD / 1M tokens de saída
 TAVILY_COST_PER_SEARCH=0.008     # tarifa estimada USD / busca (free tier = 0)
-
-# --- Auditoria (camada 1) ---
-AUDIT_RETENTION_DAYS=180         # prazo de retenção do audit_log (LGPD pede prazo definido)
+EMBEDDING_COST_PER_1M=0.15       # tarifa estimada USD / 1M tokens de embeddings (RAG)
+EMBEDDING_CHARS_PER_TOKEN=4      # os SDKs de embeddings não devolvem tokens; estimamos por caracteres
 
 # --- Tracing / Langfuse (camada 2 — opcional; ausente ou false = no-op) ---
 TRACING_ENABLED=false
@@ -56,8 +55,13 @@ LANGFUSE_HOST=https://cloud.langfuse.com   # (ou .../eu); self-host só se um di
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_SAMPLE_RATE=1.0         # 1.0 na PoC; reduzir se o volume crescer
+ENVIRONMENT=local                # tag do trace: local | docker | railway | ci
 ```
 
 > **Contrato de degradação (R11.3):** com `TRACING_ENABLED=false`, ou sem as chaves, ou com o
 > coletor fora do ar, o comportamento da aplicação é **idêntico ao de hoje**. O tracing nunca é
 > caminho crítico.
+>
+> **Atenção no Docker/Railway:** o pacote `langfuse` **não** entra na imagem base. Para o
+> `TRACING_ENABLED=true` ter efeito é preciso construir a imagem com `--build-arg INSTALL_OBS=true`
+> (o `docker-compose.yml` já faz isso). Sem o pacote, o tracing degrada em silêncio.

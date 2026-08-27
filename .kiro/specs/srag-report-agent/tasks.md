@@ -101,8 +101,9 @@
   (`TRACING_ENABLED`, `LANGFUSE_*`, `LANGFUSE_SAMPLE_RATE`). (R11.1, R11.3, R11.8)
 - [x] T8.9 — Ligar no `graph.py`: `invoke(..., config={"callbacks": ...})`, com `report_id` como
   identificador do trace e tags de ambiente/versão. (R11.2, R11.6)
-- [x] T8.10 — `requirements-obs.txt` (extras opcionais) + ajuste do Dockerfile/compose para instalá-los
-  só quando o tracing for usado — a imagem base continua enxuta (§16/§17). (R11.1)
+- [x] T8.10 — `requirements-obs.txt` (extras opcionais) + `ARG INSTALL_OBS` no Dockerfile e repasse das
+  variáveis `TRACING_ENABLED`/`LANGFUSE_*` no `docker-compose.yml`, para que os extras entrem só quando
+  o tracing for usado — a imagem base continua enxuta (§16/§17). (R11.1)
 - [ ] T8.11 — Espelhar na camada 2 os **eventos de decisão** (`stop`, `max_iters`, `fallback`,
   `selected`) como eventos do trace: instrumentação automática captura chamadas, não intenções. (ADR-13)
 - [ ] T8.12 — *(ação manual do dev)* Criar projeto no **Langfuse Cloud** (tier gratuito), gerar o par
