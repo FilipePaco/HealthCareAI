@@ -57,3 +57,28 @@ produzidos — atendendo aos requisitos de **governança e transparência**.
 
 > Observação de privacidade: o trilho guarda apenas **agregados e metadados** — nunca microdados de
 > pacientes. Conteúdos binários (ex.: PNG de gráfico) são reduzidos ao seu tamanho, não ao conteúdo.
+
+---
+
+## Camada 2 — o trace no Langfuse (opcional)
+
+O `audit_log` acima é o **registro de conformidade**: é ele que responde "de onde veio este número" e
+"que notícia embasou esta frase". Ele nunca depende de serviço externo e nunca é desligado.
+
+Quando `TRACING_ENABLED=true`, a mesma execução também é enviada ao **Langfuse**, que responde a
+outras perguntas — as de quem está *desenvolvendo*: quanto tempo cada nó levou, qual prompt exato foi
+enviado ao modelo, quantos tokens cada chamada consumiu, como duas execuções diferem.
+
+O elo entre os dois é o **`report_id`**, usado também como identificador do trace: com ele em mãos
+você acha o mesmo relatório nos dois lugares.
+
+| | `audit_log` (camada 1) | Langfuse (camada 2) |
+|---|---|---|
+| Para quem | auditor / avaliador | quem desenvolve |
+| Registra | decisões e resultado | mecânica da execução |
+| Onde vive | seu Postgres | serviço externo |
+| Retenção | sua (`AUDIT_RETENTION_DAYS`) | 30 dias no tier gratuito |
+| Pode ser desligado? | não | sim, e é o default |
+
+Se o Langfuse estiver desligado, fora do ar ou sem credenciais, **nada muda**: o relatório é gerado
+normalmente e o trilho acima continua completo.
