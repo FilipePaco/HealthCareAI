@@ -52,6 +52,7 @@ def aggregate_usage(engine: Engine, limit: int = 50) -> dict:
           coalesce(sum((payload->'usage'->>'input_tokens')::int), 0) AS input_tokens,
           coalesce(sum((payload->'usage'->>'output_tokens')::int), 0) AS output_tokens,
           coalesce(sum((payload->'usage'->>'total_tokens')::int), 0) AS total_tokens,
+          coalesce(sum((payload->'usage'->>'embedding_tokens')::int), 0) AS embedding_tokens,
           coalesce(sum((payload->'usage'->>'tavily_searches')::int), 0) AS tavily_searches,
           coalesce(sum((payload->'usage'->>'estimated_cost_usd')::numeric), 0) AS estimated_cost_usd
         FROM reports
@@ -77,6 +78,7 @@ def aggregate_usage(engine: Engine, limit: int = 50) -> dict:
             "input_tokens": t.input_tokens,
             "output_tokens": t.output_tokens,
             "total_tokens": t.total_tokens,
+            "embedding_tokens": t.embedding_tokens,
             "tavily_searches": t.tavily_searches,
             "estimated_cost_usd": round(float(t.estimated_cost_usd), 6),
             "estimate": True,

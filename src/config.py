@@ -39,7 +39,19 @@ class Settings(BaseSettings):
     # Defaults ~ Gemini 2.5 Flash-Lite; ajuste por env se trocar de modelo/provedor.
     llm_input_cost_per_1m: float = 0.10
     llm_output_cost_per_1m: float = 0.40
+    embedding_cost_per_1m: float = 0.15
     tavily_cost_per_search: float = 0.008
+    # Os SDKs de embeddings não devolvem contagem de tokens; estimamos por caracteres (R10.5).
+    embedding_chars_per_token: int = 4
+
+    # Tracing / Langfuse (camada 2, ADR-13). Desligado por default: sem estas variáveis a
+    # aplicação se comporta exatamente como antes (R11.3).
+    tracing_enabled: bool = False
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_sample_rate: float = 1.0
+    environment: str = "local"   # tag do trace: local | railway | ci
 
     @property
     def cors_origins_list(self) -> list[str]:

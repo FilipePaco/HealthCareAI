@@ -3,17 +3,23 @@
 Por requisição: embedda os trechos retornados pela busca, indexa em memória
 (`InMemoryVectorStore`) e recupera o top-k mais relevante ao cenário. O índice é
 reconstruído a cada relatório e descartado — adequado a notícia efêmera/tempo real.
+
+O passo de RAG é executado dentro de um `RunnableLambda` para que apareça como span próprio no
+trace (R11.5) e seu consumo de embeddings é contabilizado no `UsageTracker` (R10.5) — antes ele
+ficava fora da conta de custo.
 """
 from __future__ import annotations
 
 from langchain_core.documents import Document
+from langchain_core.runnables import RunnableLambda
 from langchain_core.vectorstores import InMemoryVectorStore
 
 from src.agent.llm import get_embeddings
 from src.agent.tools.news_tool import Article, search_news
+from src.governance.usage import UsageTracker
 
 
-def build_index(articles: list[Article]) -> InMemoryVectorStore:
+def build_index(articles: list[Article], usage: UsageTracker | None = None) -> InMemoryVectorStore:
     """Indexa em memória os artigos que tenham conteúdo."""
     store = InMemoryVectorStore(get_embeddings())
     docs = [
@@ -26,12 +32,18 @@ def build_index(articles: list[Article]) -> InMemoryVectorStore:
     ]
     if docs:
         store.add_documents(docs)
+        if usage is not None:
+            usage.record_embedding(d.page_content for d in docs)
     return store
 
 
-def retrieve(store: InMemoryVectorStore, query: str, k: int = 4) -> list[dict]:
+def retrieve(
+    store: InMemoryVectorStore, query: str, k: int = 4, usage: UsageTracker | None = None
+) -> list[dict]:
     """Top-k trechos mais relevantes ao cenário, já com fonte e data."""
     results = store.similarity_search(query, k=k)
+    if usage is not None:
+        usage.record_embedding([query])  # a query também é embeddada
     return [
         {
             "content": d.page_content,
@@ -43,7 +55,13 @@ def retrieve(store: InMemoryVectorStore, query: str, k: int = 4) -> list[dict]:
     ]
 
 
-def rank_articles(articles: list[Article], scenario_query: str, k: int = 4) -> list[dict]:
+def rank_articles(
+    articles: list[Article],
+    scenario_query: str,
+    k: int = 4,
+    usage: UsageTracker | None = None,
+    config: dict | None = None,
+) -> list[dict]:
     """Indexa artigos já obtidos e recupera o top-k relevante ao cenário (RAG efêmero).
 
     Usado pelo laço de tool-calling (ADR-11), que acumula artigos de várias buscas. Se os
@@ -51,18 +69,30 @@ def rank_articles(articles: list[Article], scenario_query: str, k: int = 4) -> l
     """
     if not articles:
         return []
-    try:
-        store = build_index(articles)
-        return retrieve(store, scenario_query, k=k)
-    except Exception:  # noqa: BLE001 - embeddings indisponíveis: usa artigos crus
-        return [
-            {"content": a.content, "title": a.title, "url": a.url, "date": a.date}
-            for a in articles[:k]
-        ]
+
+    def _rank(_: object) -> list[dict]:
+        try:
+            store = build_index(articles, usage)
+            return retrieve(store, scenario_query, k=k, usage=usage)
+        except Exception:  # noqa: BLE001 - embeddings indisponíveis: usa artigos crus
+            return [
+                {"content": a.content, "title": a.title, "url": a.url, "date": a.date}
+                for a in articles[:k]
+            ]
+
+    # Executado como runnable para virar um span no trace (R11.5).
+    return RunnableLambda(_rank, name="rag_rank_articles").invoke(
+        {"scenario": scenario_query, "k": k, "articles": len(articles)}, config=config or {}
+    )
 
 
 def gather_relevant_news(
-    scenario_query: str, search_query: str | None = None, k: int = 4, max_results: int = 6
+    scenario_query: str,
+    search_query: str | None = None,
+    k: int = 4,
+    max_results: int = 6,
+    usage: UsageTracker | None = None,
+    config: dict | None = None,
 ) -> list[dict]:
     """Pipeline completo: busca (Tavily) -> índice efêmero -> retrieve top-k.
 
@@ -70,4 +100,4 @@ def gather_relevant_news(
     métricas e é usado na recuperação semântica. Lista vazia aciona o fallback (R4.4).
     """
     articles = search_news(search_query or scenario_query, max_results=max_results)
-    return rank_articles(articles, scenario_query, k=k)
+    return rank_articles(articles, scenario_query, k=k, usage=usage, config=config)

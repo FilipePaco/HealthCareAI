@@ -29,7 +29,7 @@ class _FakeChat:
     def bind_tools(self, tools):  # noqa: ANN001
         return self
 
-    def invoke(self, messages):  # noqa: ANN001
+    def invoke(self, messages, config=None):  # noqa: ANN001
         ai = self.script[min(self.calls, len(self.script) - 1)]
         self.calls += 1
         return ai
@@ -49,6 +49,7 @@ def _events(trail: _FakeTrail) -> list[str]:
 
 def _patch(monkeypatch, script) -> None:
     monkeypatch.setattr(news_agent, "get_chat", lambda: _FakeChat(script))
+    # a tool `buscar_noticias` resolve `search_news` no namespace do módulo em tempo de chamada
     monkeypatch.setattr(
         news_agent, "search_news", lambda q: [Article("T", f"http://x/{q[:5]}", "2024-06-01", "c")]
     )
@@ -56,7 +57,9 @@ def _patch(monkeypatch, script) -> None:
     monkeypatch.setattr(
         news_agent,
         "rank_articles",
-        lambda arts, scenario, k=4: [{"url": a.url, "title": a.title} for a in arts[:k]],
+        lambda arts, scenario, k=4, usage=None, config=None: [
+            {"url": a.url, "title": a.title} for a in arts[:k]
+        ],
     )
 
 
@@ -110,7 +113,7 @@ def test_news_agent_default_search_when_model_never_calls_tool(monkeypatch) -> N
 
 def test_news_agent_raises_when_first_call_fails(monkeypatch) -> None:
     class _Boom(_FakeChat):
-        def invoke(self, messages):  # noqa: ANN001
+        def invoke(self, messages, config=None):  # noqa: ANN001
             raise RuntimeError("429 RESOURCE_EXHAUSTED")
 
     monkeypatch.setattr(news_agent, "get_chat", lambda: _Boom([_FakeAI([])]))
@@ -125,7 +128,9 @@ def test_news_node_falls_back_on_agent_error(monkeypatch) -> None:
         raise RuntimeError("tool-calling indisponível")
 
     monkeypatch.setattr(graph, "run_news_agent", _raise)
-    monkeypatch.setattr(graph, "_fallback_news", lambda metrics, trail, usage: [{"url": "http://ok"}])
+    monkeypatch.setattr(
+        graph, "_fallback_news", lambda metrics, trail, usage, config=None: [{"url": "http://ok"}]
+    )
 
     node = graph._news_node(_FakeTrail(), UsageTracker())
     out = node({"metrics": {"m": {"value": 1}}})
