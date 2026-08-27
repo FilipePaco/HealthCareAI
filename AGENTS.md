@@ -1,4 +1,4 @@
-# CLAUDE.md — Guia para agentes de código neste repositório
+# AGENTS.md — Guia para agentes de código neste repositório
 
 Contexto e regras para qualquer sessão de IA que for **implementar** este projeto. A especificação
 (SDD) é a fonte da verdade; este arquivo resume o essencial e aponta para ela.

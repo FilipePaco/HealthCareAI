@@ -1,0 +1,8 @@
+# Extras opcionais de observabilidade (camada 2 — tracing, ADR-13).
+#
+# NÃO entram na imagem base: sem eles a aplicação roda idêntica, com TRACING_ENABLED=false.
+# Instale só onde o tracing for usado:  pip install -r requirements-obs.txt
+#
+# O acoplamento vive inteiro em src/governance/tracing.py (R11.8).
+
+langfuse>=3.0                    # cliente + CallbackHandler do LangChain

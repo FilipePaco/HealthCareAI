@@ -45,8 +45,23 @@ pytest                                      # testes (integração pula sem Post
 ## Status
 ✅ **Funcional.** Solução completa: ETL com **dados reais do DATASUS** (SRAG 2024, ~268 mil casos),
 4 métricas determinísticas, 2 gráficos, agente (LangGraph + RAG + grounding), auditoria, API com
-guardrails, Streamlit e export PDF. **43 testes** passando. Guia de deploy no Railway em
-[`DEPLOY.md`](DEPLOY.md).
+guardrails, Streamlit e export PDF. **67 testes** (49 puros + 18 de integração, que pulam sem
+Postgres). Guia de deploy no Railway em [`DEPLOY.md`](DEPLOY.md).
+
+### Observabilidade (opcional)
+A auditoria roda em **duas camadas** ([ADR-13](.kiro/specs/srag-report-agent/design.md)):
+
+- **Camada 1 — `audit_log`** no Postgres: registro de conformidade, sempre ligado, exposto em
+  `GET /audit/{report_id}`. Não depende de nenhum serviço externo.
+- **Camada 2 — tracing no Langfuse** (Cloud, tier gratuito): prompts, latência e custo por chamada,
+  para depurar. **Desligada por default.** Para ligar:
+
+```bash
+pip install -r requirements-obs.txt
+# no .env: TRACING_ENABLED=true + LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+```
+
+Sem essas variáveis a aplicação roda exatamente como antes — o tracing nunca é caminho crítico.
 
 ## Métricas e entregas do relatório
 - Taxa de aumento de casos · taxa de mortalidade · taxa de ocupação de UTI · taxa de vacinação.

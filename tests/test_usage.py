@@ -54,9 +54,17 @@ def test_usage_as_dict_shape() -> None:
         "input_tokens",
         "output_tokens",
         "total_tokens",
+        "embedding_calls",
+        "embedding_tokens",
         "tavily_searches",
         "estimated_cost_usd",
         "estimate",
+        "provider",
+        "model",
+        "rates_usd",
     }
     assert d["total_tokens"] == 15
     assert d["estimate"] is True
+    # R10.4: o custo só é interpretável se o modelo e as tarifas vierem junto
+    assert d["model"] == settings.llm_model
+    assert d["rates_usd"]["llm_input_per_1m"] == settings.llm_input_cost_per_1m

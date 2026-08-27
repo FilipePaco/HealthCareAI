@@ -93,6 +93,17 @@ agente embasados em notícias em tempo real, com rastreabilidade completa das de
 - **R6.2** *(Ubiquitous)* Cada relatório deve ter um identificador único cujo trilho de auditoria
   pode ser recuperado posteriormente.
 - **R6.3** *(Ubiquitous)* O sistema deve expor o trilho de auditoria de um relatório por meio da API.
+- **R6.4** *(Event-driven)* Quando o LLM for invocado, o sistema deve registrar no trilho o **prompt
+  enviado e a resposta recebida** (truncados, com hash do conteúdo integral), além do modelo e dos
+  parâmetros usados — cumprindo o que P2 já promete e hoje não é registrado.
+- **R6.5** *(Ubiquitous)* Cada evento do trilho deve ser **tipado** (vocabulário fechado de eventos) e
+  carregar `node`, `status` (`ok` / `error` / `fallback`), `duration_ms` e o identificador do evento
+  pai, permitindo reconstruir a árvore de execução e o tempo gasto em cada etapa.
+- **R6.6** *(Ubiquitous)* O trilho deve registrar a **proveniência** da execução: versão do código
+  (git SHA), provedor/modelo de LLM, versão dos prompts e referência do dado de origem (data de carga
+  e contagem de linhas da ETL).
+- **R6.7** *(Ubiquitous)* O `audit_log` deve ser **append-only** para a aplicação (sem `UPDATE`/`DELETE`)
+  e ter **prazo de retenção configurado e documentado** (`AUDIT_RETENTION_DAYS`), conforme LGPD.
 
 ## 7. Guardrails e dados sensíveis
 
@@ -135,6 +146,37 @@ agente embasados em notícias em tempo real, com rastreabilidade completa das de
   rotulada como tal.
 - **R10.3** *(Ubiquitous)* O uso/custo deve ser **exposto no JSON do relatório**, **registrado no
   trilho de auditoria** (P2) e disponível de forma **agregada via API** (`GET /usage`).
+- **R10.4** *(Ubiquitous)* O registro de uso deve incluir o **modelo efetivamente usado** e a **tarifa
+  aplicada**, para que o custo estimado seja interpretável quando o modelo for trocado por env var.
+- **R10.5** *(Ubiquitous)* O consumo de **embeddings** do RAG deve ser contabilizado junto do consumo
+  de chat — hoje ele fica fora da conta e subestima o custo do relatório.
+
+## 11. Tracing e observabilidade do agente (camada 2)
+
+> Complementa — não substitui — o §6. A camada 1 (`audit_log`) é o registro de conformidade; esta é a
+> camada operacional (latência, custo por chamada, replay). Ver ADR-13.
+
+- **R11.1** *(State-driven)* Enquanto `TRACING_ENABLED=true`, o sistema deve emitir para o **Langfuse**
+  um **trace por relatório**, com um span por nó do grafo e um span por chamada de LLM, tool e retrieval.
+- **R11.2** *(Ubiquitous)* O trace deve ser identificado pelo **`report_id`**, permitindo navegar do
+  trilho de auditoria (camada 1) para o trace (camada 2) e vice-versa.
+- **R11.3** *(Unwanted)* Se o tracing estiver desabilitado, sem credenciais, ou se o coletor estiver
+  indisponível ou lento, então o sistema deve gerar o relatório **normalmente**, sem erro e sem
+  degradar a camada 1. O tracing nunca é caminho crítico.
+- **R11.4** *(Event-driven)* Quando o LLM solicitar a ferramenta de busca, o sistema deve **executá-la
+  como tool do LangChain** (`.invoke` com o `config` de callbacks), de modo que a execução apareça como
+  span próprio. *(Hoje `search_news` é chamado diretamente e a execução ficaria invisível no trace.)*
+- **R11.5** *(Ubiquitous)* As chamadas de **embeddings** do RAG devem ser instrumentadas — via runnable
+  de retrieval ou instrumentação OTel — já que o `CallbackHandler` sozinho não as captura.
+- **R11.6** *(Ubiquitous)* O trace de cada chamada de LLM deve conter prompt, resposta, modelo, tokens
+  de entrada/saída e latência.
+- **R11.7** *(Unwanted)* Se o coletor de tracing for externo à infraestrutura do projeto — que é a
+  configuração adotada (Langfuse Cloud, ADR-13) —, então apenas **agregados** podem trafegar: os
+  prompts contêm somente valores de métricas e trechos de notícia pública, nunca microdados (P4).
+  A garantia é estrutural: os prompts são montados por `scenario_text` / `composer_user_prompt`, que
+  só recebem agregados.
+- **R11.8** *(Ubiquitous)* O acesso ao Langfuse deve se dar **exclusivamente** por
+  `src/governance/tracing.py`; trocar o backend de tracing não deve exigir mudança em outros módulos.
 
 ---
 

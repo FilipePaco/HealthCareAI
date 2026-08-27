@@ -45,10 +45,12 @@ def enforce_grounding(commentary: ReportCommentary, allowed_urls: set[str]) -> R
     return commentary
 
 
-def formulate_query(metrics: dict, usage: UsageTracker | None = None) -> str:
+def formulate_query(
+    metrics: dict, usage: UsageTracker | None = None, config: dict | None = None
+) -> str:
     """Formula os termos de busca a partir do cenário (fallback determinístico do nó de notícias)."""
     resp = get_chat().invoke(
-        [SystemMessage(SYSTEM_QUERY), HumanMessage(scenario_text(metrics))]
+        [SystemMessage(SYSTEM_QUERY), HumanMessage(scenario_text(metrics))], config=config or {}
     )
     if usage is not None:
         usage.record_llm(resp)
@@ -58,7 +60,10 @@ def formulate_query(metrics: dict, usage: UsageTracker | None = None) -> str:
 
 
 def compose_commentary(
-    metrics: dict, news: list[dict], usage: UsageTracker | None = None
+    metrics: dict,
+    news: list[dict],
+    usage: UsageTracker | None = None,
+    config: dict | None = None,
 ) -> ReportCommentary:
     """Gera o comentário por métrica + síntese, com grounding forçado.
 
@@ -68,7 +73,8 @@ def compose_commentary(
     allowed = {n["url"] for n in news if n.get("url")}
     chat = get_chat().with_structured_output(ReportCommentary, include_raw=True)
     result = chat.invoke(
-        [SystemMessage(SYSTEM_COMPOSER), HumanMessage(composer_user_prompt(metrics, news))]
+        [SystemMessage(SYSTEM_COMPOSER), HumanMessage(composer_user_prompt(metrics, news))],
+        config=config or {},
     )
     if usage is not None and result.get("raw") is not None:
         usage.record_llm(result["raw"])

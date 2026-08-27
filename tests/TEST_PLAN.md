@@ -94,15 +94,38 @@
 | `test_usage_accumulates_llm_tokens` | `record_llm` soma chamadas e tokens de `usage_metadata` | R10.1 |
 | `test_usage_counts_searches` | `record_search` conta buscas Tavily | R10.1 |
 | `test_usage_estimated_cost` | custo estimado = tokens×tarifa + buscas×tarifa (config) | R10.2 |
-| `test_usage_as_dict_shape` | `as_dict` expõe chamadas, tokens (in/out/total), buscas e custo | R10.3 |
+| `test_usage_as_dict_shape` | `as_dict` expõe chamadas, tokens (in/out/total), embeddings, buscas, custo **e** o modelo/tarifas usados | R10.3, R10.4 |
 
 ### `GET /usage` — agregação de uso (Fase 7) — *integração c/ Postgres*
 | Teste | O que valida | Ref | DB? |
 |---|---|---|---|
 | `test_usage_endpoint_aggregates` | `GET /usage` soma o uso dos relatórios persistidos e retorna totais | R10.3 | sim |
 
+### `src/governance/tracing.py` — tracing / camada 2 (Fase 8) — *puro*
+> O foco é o **contrato de degradação**: o tracing nunca pode virar caminho crítico.
+
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_inactive_when_disabled` | `TRACING_ENABLED=false` → sem callbacks e `runnable_config() == {}` | R11.3 |
+| `test_inactive_without_credentials` | habilitado mas sem chaves → inativo, sem exceção | R11.3 |
+| `test_degrades_when_sdk_unavailable` | SDK ausente/incompatível → lista vazia, sem exceção | R11.3 |
+| `test_flush_never_raises` / `test_flush_noop_when_disabled` | `flush()` é silencioso em qualquer estado | R11.3 |
+| `test_metadata_carries_report_id` | `report_id` vai como `langfuse_session_id` (elo camada 1 ↔ 2) | R11.2 |
+| `test_report_id_is_valid_trace_id` | `new_report_id()` tem formato de trace id do OpenTelemetry | R11.2 |
+| `test_runnable_config_shape` | config devolve `callbacks` + `metadata` quando ativo | R11.1 |
+
+### `src/agent/rag.py` — embeddings na conta de custo (Fase 8) — *puro*
+| Teste | O que valida | Ref |
+|---|---|---|
+| `test_build_index_records_embeddings` | indexar documentos contabiliza uma chamada de embeddings | R10.5 |
+| `test_rank_articles_counts_documents_and_query` | documentos **e** query entram na conta | R10.5 |
+| `test_embeddings_enter_estimated_cost` | o custo estimado reflete os embeddings (antes era subestimado) | R10.5 |
+| `test_rank_articles_empty_is_noop` | sem artigos, nada é embeddado | R10.5 |
+
 ## Pendentes (fases seguintes — documentar antes de implementar)
 - `src/report/pdf.py`: export do relatório em PDF (R8.2).
 - `app_streamlit.py`: cliente consumindo a API.
 - `src/agent/...`: comentário sem fonte é descartado/marcado (R5.4).
 - `src/api/security.py`: request sem API key -> 401; excesso -> 429 (R7.4, R7.5).
+- `src/governance/audit.py` (camada 1, T8.1–T8.5): evento tipado, escrita em lote, prompt/resposta
+  do LLM no trilho, proveniência e retenção — testes a escrever junto da implementação.

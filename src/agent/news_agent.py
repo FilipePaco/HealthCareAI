@@ -6,6 +6,10 @@ encerra ou refina e busca de novo, até `NEWS_AGENT_MAX_ITERS`. Cada iteração 
 contabilizada (P9). Os artigos acumulados passam pelo RAG efêmero para o top-k relevante.
 
 Métricas e gráficos seguem determinísticos (P1) — a agência é restrita a este nó (ADR-09).
+
+A ferramenta é **de fato invocada** (`buscar_noticias.invoke(...)`), e não chamada por fora: assim
+cada busca aparece como span próprio no trace (R11.4). O `response_format="content_and_artifact"`
+deixa o modelo receber o resumo em texto enquanto o código recebe os `Article` originais para o RAG.
 """
 from __future__ import annotations
 
@@ -23,14 +27,15 @@ from src.governance.usage import UsageTracker
 DEFAULT_QUERY = "SRAG síndrome respiratória aguda grave notícias Brasil"
 
 
-@tool
-def buscar_noticias(query: str) -> str:
+@tool(response_format="content_and_artifact")
+def buscar_noticias(query: str) -> tuple[str, list[Article]]:
     """Busca notícias recentes na web sobre SRAG (síndrome respiratória aguda grave) no Brasil.
 
     Args:
         query: termos de busca curtos, em português, derivados do cenário das métricas.
     """
-    return _format_results(search_news(query))
+    articles = search_news(query)
+    return _format_results(articles), articles
 
 
 def _format_results(articles: list[Article]) -> str:
@@ -55,8 +60,27 @@ def _dedupe(articles: list[Article]) -> list[Article]:
     return out
 
 
+def _call_tool(tool_call: dict, config: dict | None) -> ToolMessage:
+    """Executa `buscar_noticias` como tool do LangChain e devolve a ToolMessage correspondente.
+
+    Normaliza o dicionário de tool call (o campo `type` é o que faz o LangChain devolver uma
+    `ToolMessage` em vez de tratar o dict como argumentos).
+    """
+    call = {
+        "name": tool_call.get("name") or "buscar_noticias",
+        "args": tool_call.get("args") or {},
+        "id": tool_call.get("id") or "",
+        "type": "tool_call",
+    }
+    return buscar_noticias.invoke(call, config=config or {})
+
+
 def run_news_agent(
-    metrics: dict, trail: AuditTrail, usage: UsageTracker, k: int = 4
+    metrics: dict,
+    trail: AuditTrail,
+    usage: UsageTracker,
+    k: int = 4,
+    config: dict | None = None,
 ) -> list[dict]:
     """Roda o laço de tool-calling e devolve o top-k de notícias (RAG sobre o acumulado).
 
@@ -71,7 +95,7 @@ def run_news_agent(
 
     for i in range(max_iters):
         try:
-            ai = llm.invoke(messages)
+            ai = llm.invoke(messages, config=config or {})
         except Exception as exc:  # noqa: BLE001 - cota/indisponibilidade no meio do laço
             trail.record("news_agent.llm_error", {"iteration": i, "error": str(exc)})
             if collected:
@@ -85,13 +109,21 @@ def run_news_agent(
             break
         for tc in tool_calls:
             query = ((tc.get("args") or {}).get("query") or "").strip()
-            articles = search_news(query) if query else []
+            if not query:  # o modelo pediu a tool sem query: responde e segue (R4.8)
+                trail.record("news_agent.tool_call", {"iteration": i, "query": "", "count": 0})
+                messages.append(
+                    ToolMessage(content="Query vazia — informe termos de busca.",
+                                tool_call_id=tc.get("id", ""))
+                )
+                continue
+            tool_msg = _call_tool(tc, config)
+            articles = list(tool_msg.artifact or [])
             usage.record_search(1)
             collected.extend(articles)
             trail.record(
                 "news_agent.tool_call", {"iteration": i, "query": query, "count": len(articles)}
             )
-            messages.append(ToolMessage(content=_format_results(articles), tool_call_id=tc.get("id", "")))
+            messages.append(tool_msg)
     else:
         trail.record("news_agent.max_iters", {"max_iters": max_iters})
 
@@ -101,6 +133,6 @@ def run_news_agent(
         usage.record_search(1)
         trail.record("news_agent.default_search", {"query": DEFAULT_QUERY, "count": len(collected)})
 
-    news = rank_articles(_dedupe(collected), scenario, k=k)
+    news = rank_articles(_dedupe(collected), scenario, k=k, usage=usage, config=config)
     trail.record("news_agent.selected", {"count": len(news), "sources": [n.get("url") for n in news]})
     return news

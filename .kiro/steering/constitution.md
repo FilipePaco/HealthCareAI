@@ -21,6 +21,18 @@ identificador do relatório gerado. Nenhuma etapa é uma "caixa-preta".
 - **Porquê:** o desafio cobra explicitamente "mecanismos de auditoria e registro de decisões dos
   agentes". É também requisito de governança para qualquer sistema que apoie decisão clínica.
 
+**Duas camadas (ADR-13).** Registro de conformidade e observabilidade operacional são coisas
+diferentes e não devem ser confundidas num mecanismo só:
+- **Camada 1 — registro de conformidade:** tabela `audit_log` no Postgres do próprio projeto. É o
+  *system of record*: append-only, retenção definida, consultável por SQL, **sem dependência de
+  terceiro**. Nenhum requisito de auditoria pode depender de um serviço externo estar no ar.
+- **Camada 2 — observabilidade:** tracing (**Langfuse**) com árvore de execução, latência, custo por
+  chamada, prompts e replay. É operacional, tem TTL próprio e **pode ser desligada** sem afetar a
+  conformidade.
+
+O elo entre as duas é o `report_id`, usado como identificador do trace. Desligar a camada 2 nunca
+degrada a camada 1; a camada 2 nunca é a única testemunha de uma decisão do agente.
+
 ## P3 — Grounding obrigatório com citação de fonte
 Todo comentário/explicação gerado pelo agente deve estar ancorado em (a) uma métrica calculada
 deterministicamente e/ou (b) uma notícia recuperada, **com a fonte citada** (URL + data).
