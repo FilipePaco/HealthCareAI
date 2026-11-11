@@ -1,113 +1,125 @@
 # HealthCareAI — SRAG Report Agent
 
-PoC de IA Generativa para a **Indicium HealthCare Inc.**: um agente orquestrador que consulta dados
-reais de internações por SRAG (Open DATASUS) e notícias em tempo real para gerar, de forma
-automatizada e **auditável**, um relatório com métricas, gráficos e comentários embasados.
+A generative-AI proof of concept: an orchestrating agent that queries real hospitalization data for
+severe acute respiratory syndrome (SRAG, from Brazil's Open DATASUS) and live news, then produces an
+automated, **auditable** report with metrics, charts and grounded commentary.
 
-> ⚠️ Prova de Conceito de caráter educacional. O conteúdo gerado **não constitui orientação médica**.
+> ⚠️ Educational proof of concept. The generated content **is not medical advice**.
 
-**Status:** funcional de ponta a ponta — ETL com dados reais do DATASUS, 4 métricas determinísticas,
-2 gráficos, agente LangGraph com tool-calling e RAG, trilho de auditoria, API com guardrails,
-Streamlit e export em PDF. **67 testes**, lint limpo.
-Deploy no Railway em [`DEPLOY.md`](DEPLOY.md) · limitações conhecidas [no fim deste documento](#limitações-conhecidas).
+**Status:** working end to end. ETL on real DATASUS data, 4 deterministic metrics, 2 charts, a
+LangGraph agent with tool calling and RAG, an audit trail, an API with guardrails, a Streamlit client
+and PDF export. **67 tests**, clean lint.
+Railway deployment in [`DEPLOY.md`](DEPLOY.md) · known limitations [at the end](#known-limitations).
+
+## Highlights
+
+- **The LLM never computes a number.** Metrics come from whitelisted, parameterized SQL; the model
+  only interprets values it is given.
+- **Agency where it is useful.** The model drives a real tool-calling loop over news search, with an
+  iteration cap and a deterministic fallback.
+- **Grounding enforced in code.** Any cited URL that is not among the retrieved articles is dropped.
+- **Two-layer audit.** A compliance trail in Postgres that cannot be switched off, plus optional
+  Langfuse tracing for developers.
+- **Cost observability.** Every report records tokens, searches, the model and the rates used to
+  estimate its cost.
 
 ---
 
-## Sumário
+## Contents
 
-- [Como rodar](#como-rodar) · [O que o relatório entrega](#o-que-o-relatório-entrega) · [API](#api)
-- [Arquitetura](#arquitetura) · [Governança e auditoria](#governança-e-auditoria) · [Guardrails](#guardrails) · [Dados sensíveis](#dados-sensíveis)
-- [Observabilidade de custo](#observabilidade-de-custo) · [Tracing opcional](#tracing-opcional-langfuse) · [Testes](#testes)
-- [Especificação (SDD)](#especificação-spec-driven-development) · [Limitações conhecidas](#limitações-conhecidas)
+- [Running it](#running-it) · [What the report delivers](#what-the-report-delivers) · [API](#api)
+- [Architecture](#architecture) · [Governance and audit](#governance-and-audit) · [Guardrails](#guardrails) · [Sensitive data](#sensitive-data)
+- [Cost observability](#cost-observability) · [Optional tracing](#optional-tracing-langfuse) · [Tests](#tests)
+- [Specification (SDD)](#specification-spec-driven-development) · [Known limitations](#known-limitations)
 
 ---
 
-## Como rodar
+## Running it
 
-Copie `.env.example` para `.env` e preencha `GOOGLE_API_KEY` e `TAVILY_API_KEY`. O `.env` nunca é
-versionado.
+Copy `.env.example` to `.env` and set `GOOGLE_API_KEY` and `TAVILY_API_KEY`. The `.env` file is
+never committed.
 
-### Com Docker (recomendado)
+### With Docker (recommended)
 
 ```bash
 docker compose up --build                                    # db + api + streamlit
-docker compose exec api python -m src.etl.seed --rows 5000   # dados sintéticos, noutro terminal
+docker compose exec api python -m src.etl.seed --rows 5000   # synthetic data, in another terminal
 ```
 
-- **Streamlit:** http://localhost:8501 → botão *Gerar relatório*
-- **API (Swagger):** http://localhost:8000/docs → *Authorize* com a sua `API_KEY`
+- **Streamlit:** http://localhost:8501 → *Gerar relatório* (Generate report)
+- **API (Swagger):** http://localhost:8000/docs → *Authorize* with your `API_KEY`
 
-> **Atenção à porta do banco.** O `docker-compose.yml` expõe o Postgres em **`localhost:5433`**
-> (não 5432), para não conflitar com um Postgres instalado na máquina. Entre containers o host é
-> `db:5432`. Se for rodar a API ou os testes fora do Docker contra esse banco, use
+> **Database port.** `docker-compose.yml` exposes Postgres on **`localhost:5433`** (not 5432) to
+> avoid clashing with a local Postgres. Between containers the host is `db:5432`. To run the API or
+> tests outside Docker against that database, use
 > `DATABASE_URL=postgresql+psycopg2://srag:srag@localhost:5433/srag`.
 
-Para usar **dados reais** do DATASUS (SRAG 2024, ~268 mil casos) no lugar do seed:
+To use **real** DATASUS data (SRAG 2024, ~268k cases) instead of the seed:
 
 ```bash
-docker compose exec api python -m src.etl.load --year 2024   # baixa ~194 MB e carrega em chunks
+docker compose exec api python -m src.etl.load --year 2024   # downloads ~194 MB, loads in chunks
 ```
 
-### Sem Docker (venv)
+### Without Docker (venv)
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# suba um Postgres e aponte DATABASE_URL no .env para ele
+# start a Postgres and point DATABASE_URL in .env to it
 python -m src.etl.seed --rows 5000
-uvicorn src.api.main:app --reload      # API  em :8000
-streamlit run app_streamlit.py         # UI   em :8501
+uvicorn src.api.main:app --reload      # API on :8000
+streamlit run app_streamlit.py         # UI  on :8501
 ```
 
-O Streamlit é apenas um cliente HTTP da API: ele lê `API_BASE_URL` e `API_KEY` do ambiente e não
-toca no banco.
+Streamlit is only an HTTP client of the API: it reads `API_BASE_URL` and `API_KEY` from the
+environment and never touches the database.
 
 ---
 
-## O que o relatório entrega
+## What the report delivers
 
-**Quatro métricas**, calculadas por SQL parametrizado — o LLM nunca as produz nem escreve a query
-(P1). Cada métrica devolve valor, numerador, denominador e uma nota com a definição usada; quando
-não há dados suficientes, o valor vem `null` explícito, em vez de um número inventado.
+**Four metrics**, computed by parameterized SQL. The LLM never produces them or writes the query
+(P1). Each metric returns its value, numerator, denominator and a note with the definition used. When
+there is not enough data the value is an explicit `null` rather than an invented number.
 
-| Métrica | Definição exata | Ressalva importante |
+| Metric | Exact definition | Important caveat |
 |---|---|---|
-| `taxa_aumento_casos` | Variação % entre duas janelas *half-open* consecutivas de 14 dias (`REPORT_INCREASE_WINDOW_DAYS`), ancoradas na data de referência | `null` se a janela anterior não tiver casos |
-| `taxa_mortalidade` | CFR: óbitos ÷ **desfechos conhecidos** (cura ou óbito) | Não é sobre todos os casos — casos em aberto ficam fora do denominador |
-| `taxa_ocupacao_uti` | Internados que precisaram de UTI ÷ total de internados | **Não é ocupação de leitos.** É a proporção de internados que necessitou UTI |
-| `taxa_vacinacao` | Vacinados ÷ casos com status vacinal conhecido | É vacinação **COVID entre os casos de SRAG**, não cobertura da população geral |
+| `taxa_aumento_casos` (case growth) | % change between two consecutive half-open 14-day windows (`REPORT_INCREASE_WINDOW_DAYS`) anchored on the reference date | `null` if the earlier window has no cases |
+| `taxa_mortalidade` (mortality) | CFR: deaths ÷ **known outcomes** (recovery or death) | Not over all cases; open cases are outside the denominator |
+| `taxa_ocupacao_uti` (ICU) | Hospitalized patients who needed ICU ÷ all hospitalized | **Not bed occupancy.** It is the share of inpatients who needed ICU |
+| `taxa_vacinacao` (vaccination) | Vaccinated ÷ cases with known vaccination status | COVID vaccination **among SRAG cases**, not population coverage |
 
-As duas últimas ressalvas importam: os nomes das métricas vêm do enunciado do desafio, mas o dado do
-DATASUS não sustenta a leitura literal. A definição real está no `note` de cada métrica, aparece no
-JSON do relatório e é a que o LLM recebe para comentar.
+The last two caveats matter: the metric names came from the brief, but DATASUS data does not support
+their literal reading. The real definition lives in each metric's `note`, appears in the report JSON,
+and is what the LLM receives to comment on.
 
-**Dois gráficos:** casos diários dos últimos 30 dias e mensais dos últimos 12 meses, derivados das
-mesmas views das métricas.
+**Two charts:** daily cases for the last 30 days and monthly cases for the last 12 months, derived
+from the same views as the metrics.
 
-**Comentários do agente:** uma explicação por métrica mais uma síntese geral, cada afirmação ancorada
-no valor calculado e/ou em notícia recuperada, **com a URL citada**. Fonte que não esteja entre as
-notícias recuperadas é descartada em código, não por confiança no modelo.
+**Agent commentary:** one explanation per metric plus an overall summary. Each claim is anchored in
+the computed value and/or a retrieved news article, **with the URL cited**. Any source not among the
+retrieved articles is discarded in code, not left to the model's judgment.
 
-Definição completa das colunas e das métricas:
+Full column and metric definitions (in Portuguese):
 [`data-and-metrics.md`](.kiro/specs/srag-report-agent/data-and-metrics.md).
 
 ---
 
 ## API
 
-Todos os endpoints, exceto `/health`, exigem o header `X-API-Key`.
+Every endpoint except `/health` requires the `X-API-Key` header.
 
-| Método | Rota | O que faz |
+| Method | Route | What it does |
 |---|---|---|
-| `GET` | `/health` | Liveness (sem autenticação) |
-| `POST` | `/reports` | **Roda o agente** e devolve o relatório completo em JSON |
-| `GET` | `/reports/{id}` | Recupera um relatório já gerado |
-| `GET` | `/reports/{id}/pdf` | Exporta o relatório em PDF |
-| `GET` | `/audit/{id}` | **Trilho de auditoria** daquele relatório |
-| `GET` | `/usage` | Uso e custo estimado, agregado e por relatório |
-| `GET` | `/metrics` | As 4 métricas com numerador/denominador |
-| `GET` | `/data/daily` · `/data/monthly` | Séries agregadas, para um front-end futuro |
-| `GET` | `/charts/daily.png` · `/charts/monthly.png` | Gráficos renderizados |
+| `GET` | `/health` | Liveness (no auth) |
+| `POST` | `/reports` | **Runs the agent** and returns the full report as JSON |
+| `GET` | `/reports/{id}` | Fetches a generated report |
+| `GET` | `/reports/{id}/pdf` | Exports the report as PDF |
+| `GET` | `/audit/{id}` | **Audit trail** for that report |
+| `GET` | `/usage` | Usage and estimated cost, aggregated and per report |
+| `GET` | `/metrics` | The 4 metrics with numerator and denominator |
+| `GET` | `/data/daily` · `/data/monthly` | Aggregated series for a future front end |
+| `GET` | `/charts/daily.png` · `/charts/monthly.png` | Rendered charts |
 
 ```bash
 KEY=$(grep '^API_KEY=' .env | cut -d= -f2-)
@@ -115,99 +127,100 @@ RID=$(curl -s -X POST localhost:8000/reports -H "X-API-Key: $KEY" | jq -r .repor
 curl -s localhost:8000/audit/$RID -H "X-API-Key: $KEY" | jq
 ```
 
-> `POST /reports` é **síncrono** e leva ~15 s: roda o laço de notícias, os embeddings e a composição.
-> Ver [limitações](#limitações-conhecidas).
+> `POST /reports` is **synchronous** and takes ~15 s: it runs the news loop, the embeddings and the
+> composition. See [limitations](#known-limitations).
 
 ---
 
-## Arquitetura
+## Architecture
 
-API-first e agente-cêntrica, com separação rígida entre preparação de dados e runtime.
+API-first and agent-centric, with a strict split between data preparation and runtime.
 
-- **ETL offline** (`src/etl/`) — baixa, limpa, seleciona colunas e anonimiza o CSV do DATASUS,
-  carregando no Postgres de forma idempotente. Separado do runtime (P6).
-- **Agente LangGraph** (`src/agent/`) — grafo de três nós: `metrics` → `news` → `compose`.
-  As métricas são determinísticas; **a agência do LLM vive só no nó de notícias**, onde ele formula
-  a query, lê os resultados e decide se refina e busca de novo, até `NEWS_AGENT_MAX_ITERS`
-  (ADR-09/ADR-11). Os gráficos são derivados fora do grafo, direto das views.
-- **RAG efêmero** (`src/agent/rag.py`) — as notícias acumuladas são embeddadas num
-  `InMemoryVectorStore` reconstruído a cada requisição e descartado em seguida. Sem vector DB
-  persistente: notícia é efêmera (ADR-08).
-- **LLM provider-agnostic** (`src/agent/llm.py`) — `init_chat_model`; trocar Gemini ↔ OpenAI ↔
-  Anthropic é mudar `LLM_PROVIDER`/`LLM_MODEL` (P8).
-- **API FastAPI** — o relatório é um recurso. **Streamlit é só um cliente** desses endpoints,
-  exatamente a fronteira que um front-end futuro usaria.
+- **Offline ETL** (`src/etl/`): downloads, cleans, selects columns and anonymizes the DATASUS CSV,
+  loading it into Postgres idempotently. Kept apart from the runtime (P6).
+- **LangGraph agent** (`src/agent/`): a three-node graph, `metrics` → `news` → `compose`. Metrics are
+  deterministic; **the LLM's agency lives only in the news node**, where it writes the query, reads
+  the results and decides whether to refine and search again, up to `NEWS_AGENT_MAX_ITERS`
+  (ADR-09/ADR-11). Charts are derived outside the graph, straight from the views.
+- **Ephemeral RAG** (`src/agent/rag.py`): accumulated news is embedded into an
+  `InMemoryVectorStore` rebuilt per request and then discarded. No persistent vector DB, because news
+  is ephemeral (ADR-08).
+- **Provider-agnostic LLM** (`src/agent/llm.py`): `init_chat_model`; switching Gemini ↔ OpenAI ↔
+  Anthropic is a matter of `LLM_PROVIDER`/`LLM_MODEL` (P8).
+- **FastAPI API**: the report is a resource. **Streamlit is just a client** of these endpoints, the
+  same boundary a future front end would use.
 
-Diagrama conceitual: [`docs/architecture/architecture.md`](docs/architecture/architecture.md) ·
-arquitetura completa e ADRs: [`design.md`](.kiro/specs/srag-report-agent/design.md).
+Conceptual diagram: [`docs/architecture/architecture.md`](docs/architecture/architecture.md) ·
+full architecture and ADRs (in Portuguese): [`design.md`](.kiro/specs/srag-report-agent/design.md).
 
 ---
 
-## Governança e auditoria
+## Governance and audit
 
-A auditoria roda em **duas camadas**, que respondem a perguntas diferentes (ADR-13):
+Auditing runs in **two layers** that answer different questions (ADR-13):
 
-| | **Camada 1** — `audit_log` | **Camada 2** — Langfuse |
+| | **Layer 1**: `audit_log` | **Layer 2**: Langfuse |
 |---|---|---|
-| Responde a | auditor / avaliador | quem está desenvolvendo |
-| Registra | decisões e resultado | mecânica da execução |
-| Onde vive | seu Postgres | serviço externo |
-| Pode ser desligada? | **não** | sim, e é o default |
+| Answers to | auditor / reviewer | developer |
+| Records | decisions and outcome | execution mechanics |
+| Lives in | your Postgres | external service |
+| Can be turned off? | **no** | yes, and off by default |
 
-A **camada 1 é o registro de conformidade**: cada geração grava, evento a evento, as métricas
-calculadas, cada iteração do laço de tool-calling (com a query que o modelo escolheu e quantos
-resultados vieram), a decisão de parar, as notícias selecionadas, o comentário composto e o consumo.
-Não depende de nenhum serviço externo estar no ar.
+**Layer 1 is the compliance record.** Each run stores, event by event, the computed metrics, every
+iteration of the tool-calling loop (with the query the model chose and how many results came back),
+the decision to stop, the selected news, the composed commentary and the usage. It does not depend
+on any external service being up.
 
 ```
 gather_metrics         {'taxa_mortalidade': 25.39, 'taxa_ocupacao_uti': 33.16, ...}
-news_agent.tool_call   query='tendência casos SRAG Brasil'      -> 6 artigos
-news_agent.tool_call   query='mortalidade SRAG Brasil'          -> 6 artigos
-news_agent.tool_call   query='ocupação leitos UTI SRAG Brasil'  -> 6 artigos
-news_agent.tool_call   query='vacinação gripe COVID Brasil'     -> 6 artigos
-news_agent.stop        modelo encerrou a busca
-news_agent.selected    6 selecionadas p/ o RAG
-compose                4 comentários, 6 fontes
+news_agent.tool_call   query='tendência casos SRAG Brasil'      -> 6 articles
+news_agent.tool_call   query='mortalidade SRAG Brasil'          -> 6 articles
+news_agent.tool_call   query='ocupação leitos UTI SRAG Brasil'  -> 6 articles
+news_agent.tool_call   query='vacinação gripe COVID Brasil'     -> 6 articles
+news_agent.stop        model ended the search
+news_agent.selected    6 selected for RAG
+compose                4 comments, 6 sources
 usage                  US$ 0.0337 | 6449 tokens
 ```
 
-Esse trilho é o que permite reconstruir **por que** o agente disse o que disse. Como acessá-lo e o
-que cada evento significa: [`docs/auditoria.md`](docs/auditoria.md).
+This trail is what lets you reconstruct **why** the agent said what it said. How to access it and
+what each event means (in Portuguese): [`docs/auditoria.md`](docs/auditoria.md).
 
 ---
 
 ## Guardrails
 
-Cada fronteira de confiança tem um controle explícito (P5):
+Every trust boundary has an explicit control (P5):
 
-| Fronteira | Controle |
+| Boundary | Control |
 |---|---|
-| Banco | Whitelist de queries parametrizadas em `db/queries.py`; nome fora da whitelist é rejeitado. Nenhum SQL livre, nenhum text-to-SQL |
-| LLM → números | O modelo **nunca** calcula métrica; ele recebe valores já computados e apenas interpreta |
-| LLM → saída | Saída estruturada por schema Pydantic + disclaimer obrigatório |
-| LLM → fontes | Grounding forçado em código: URL citada que não esteja entre as notícias recuperadas é removida |
-| Internet | Busca com janela de recência, atribuição de fonte e limite de iterações do laço |
-| HTTP | API key (`X-API-Key`), rate limiting (`slowapi`) e CORS restrito |
-| Segredos | Só por variável de ambiente; nunca em código, log ou trilho |
+| Database | Whitelist of parameterized queries in `db/queries.py`; any name outside it is rejected. No free SQL, no text-to-SQL |
+| LLM → numbers | The model **never** computes a metric; it receives precomputed values and only interprets them |
+| LLM → output | Structured output via a Pydantic schema plus a mandatory disclaimer |
+| LLM → sources | Grounding enforced in code: a cited URL not among the retrieved articles is removed |
+| Internet | Search with a recency window, source attribution and a loop iteration cap |
+| HTTP | API key (`X-API-Key`), rate limiting (`slowapi`) and restricted CORS |
+| Secrets | Environment variables only; never in code, logs or the audit trail |
 
-Falha de LLM ou de busca **degrada, não quebra**: o nó de notícias cai para uma busca determinística
-e, no limite, o relatório sai com métricas e gráficos válidos sinalizando a ausência de contexto.
-
----
-
-## Dados sensíveis
-
-- **Minimização na origem:** a ETL seleciona apenas as colunas necessárias às métricas e descarta
-  identificadores diretos e quase-identificadores antes da carga.
-- **Só agregados saem do banco.** Microdados nunca chegam à API, ao LLM, ao PDF ou ao trilho.
-- Os prompts são montados a partir de valores agregados e trechos de notícia pública — por
-  construção não há microdado a vazar, inclusive para o tracing externo.
+LLM or search failures **degrade instead of breaking**: the news node falls back to a deterministic
+search and, at worst, the report ships with valid metrics and charts and flags the missing context.
 
 ---
 
-## Observabilidade de custo
+## Sensitive data
 
-Cada relatório mede e expõe o que consumiu dos três recursos pagos (P9):
+- **Minimization at the source:** the ETL keeps only the columns the metrics need and drops direct
+  identifiers and quasi-identifiers before loading.
+- **Only aggregates leave the database.** Microdata never reaches the API, the LLM, the PDF or the
+  audit trail.
+- Prompts are built from aggregate values and public news snippets, so by construction there is no
+  microdata to leak, including to external tracing.
+
+---
+
+## Cost observability
+
+Each report measures and exposes what it consumed from the three paid resources (P9):
 
 ```json
 { "llm_calls": 3, "input_tokens": 4991, "output_tokens": 1720,
@@ -218,99 +231,99 @@ Cada relatório mede e expõe o que consumiu dos três recursos pagos (P9):
                  "embedding_per_1m": 0.15, "tavily_per_search": 0.008 } }
 ```
 
-O payload registra **o modelo e as tarifas aplicadas** junto do valor: sem isso, comparar relatórios
-gerados com modelos diferentes daria conclusão errada. É **estimativa** a partir de tarifas
-configuráveis, não fatura — e vem rotulada como tal. Agregado em `GET /usage`.
+The payload stores **the model and the rates applied** next to the value; without them, comparing
+reports generated with different models would mislead. It is an **estimate** from configurable rates,
+not an invoice, and it is labeled as such. Aggregated at `GET /usage`.
 
-Nesse exemplo, as buscas Tavily respondem por ~94% do custo; o LLM, por ~3%.
+In this example, Tavily searches account for ~94% of the cost and the LLM for ~3%.
 
 ---
 
-## Tracing opcional (Langfuse)
+## Optional tracing (Langfuse)
 
-A camada 2 dá o que o trilho ainda não dá: prompt e resposta completos, latência por nó e tokens por
-chamada. **Desligada por default** — sem as variáveis, a aplicação roda idêntica.
+Layer 2 provides what the trail does not yet: full prompt and response, per-node latency and tokens
+per call. **Off by default**; without the variables the application runs identically.
 
 ```bash
-pip install -r requirements-obs.txt     # no venv
+pip install -r requirements-obs.txt     # in the venv
 # .env:  TRACING_ENABLED=true  +  LANGFUSE_PUBLIC_KEY  +  LANGFUSE_SECRET_KEY
 ```
 
-> **No Docker/Railway**, o pacote não entra na imagem base: construa com
-> `--build-arg INSTALL_OBS=true` (o `docker-compose.yml` já faz isso). Sem o pacote, o tracing
-> degrada **em silêncio** — que é o contrato, mas o trace nunca aparece.
+> **On Docker/Railway** the package is not in the base image: build with
+> `--build-arg INSTALL_OBS=true` (`docker-compose.yml` already does). Without the package, tracing
+> degrades **silently**. That is the contract, but the trace never shows up.
 
-O `report_id` é usado como identificador do trace, então o mesmo relatório é localizável nas duas
-camadas. Se o Langfuse estiver fora do ar, sem credenciais ou desligado, o relatório é gerado
-normalmente e o `audit_log` segue completo: **tracing nunca é caminho crítico**.
+The `report_id` is used as the trace ID, so the same report can be found in both layers. If Langfuse
+is down, missing credentials or disabled, the report is generated normally and `audit_log` stays
+complete: **tracing is never on the critical path**.
 
 ---
 
-## Testes
+## Tests
 
 ```bash
-pytest                    # 67 testes
+pytest                    # 67 tests
 ruff check .              # lint
 ```
 
-**67 testes.** Os 18 de integração pulam automaticamente sem Postgres acessível; os demais são puros
-(sem rede, sem banco). Testes que consomem LLM/Tavily reais pulam sem chave, e pulam também em
-erro `429`/`503` — o free tier do Gemini é limitado a 20 requisições por dia por modelo.
+**67 tests.** The 18 integration tests skip automatically without a reachable Postgres; the rest are
+pure (no network, no database). Tests that call the real LLM or Tavily skip without a key, and also
+skip on `429`/`503` errors, since the Gemini free tier allows 20 requests per day per model.
 
-Duas pegadinhas ao rodar localmente:
+Two gotchas when running locally:
 
-- **Aponte para a porta certa.** Contra o banco do compose:
-  `DATABASE_URL=postgresql+psycopg2://srag:srag@localhost:5433/srag pytest`. Sem isso os 18 de
-  integração pulam em silêncio e parecem "passar".
-- **`pytest` limpa a tabela `srag_cases`.** Rode o seed de novo antes de demonstrar a UI.
+- **Use the right port.** Against the compose database:
+  `DATABASE_URL=postgresql+psycopg2://srag:srag@localhost:5433/srag pytest`. Without it the 18
+  integration tests skip silently and look like they "pass".
+- **`pytest` clears the `srag_cases` table.** Re-run the seed before demoing the UI.
 
-Plano de testes e rastreabilidade requisito ↔ teste: [`tests/TEST_PLAN.md`](tests/TEST_PLAN.md).
-
----
-
-## Especificação (Spec-Driven Development)
-
-Metodologia: estrutura **Kiro** + **constitution** (conceito do GitHub Spec Kit) para governança.
-
-| Documento | Conteúdo |
-|---|---|
-| [`constitution.md`](.kiro/steering/constitution.md) | Princípios invioláveis (P1–P9) |
-| [`tech.md`](.kiro/steering/tech.md) | Stack e contrato de variáveis de ambiente |
-| [`structure.md`](.kiro/steering/structure.md) | Estrutura do repositório e convenções |
-| [`requirements.md`](.kiro/specs/srag-report-agent/requirements.md) | Requisitos em EARS |
-| [`design.md`](.kiro/specs/srag-report-agent/design.md) | Arquitetura + 13 ADRs |
-| [`data-and-metrics.md`](.kiro/specs/srag-report-agent/data-and-metrics.md) | Colunas DATASUS + definição das métricas |
-| [`tasks.md`](.kiro/specs/srag-report-agent/tasks.md) | Plano de implementação e pendências |
-
-### Onde cada critério de avaliação é endereçado
-
-| Critério | Onde |
-|---|---|
-| Escolha da arquitetura | `design.md` §1–3 + ADR-01 a ADR-13 |
-| Governança e transparência | P2 · `governance/audit.py` · `GET /audit/{id}` · [`docs/auditoria.md`](docs/auditoria.md) |
-| Guardrails | P5 · whitelist SQL · grounding forçado · schema + disclaimer · API key/rate limit/CORS |
-| Uso de tools | Tool-calling real no nó de notícias (ADR-11) + tools determinísticas de métrica e gráfico |
-| Tratamento de dados sensíveis | P4 · anonimização na ETL · só agregados na API, no LLM e no trilho |
-| Clean code | Ruff · type hints · Pydantic nas fronteiras · 67 testes |
+Test plan and requirement ↔ test traceability: [`tests/TEST_PLAN.md`](tests/TEST_PLAN.md).
 
 ---
 
-## Limitações conhecidas
+## Specification (Spec-Driven Development)
 
-Registradas honestamente; as pendências estão detalhadas em
-[`tasks.md`](.kiro/specs/srag-report-agent/tasks.md).
+Method: **Kiro** structure plus a **constitution** (a GitHub Spec Kit concept) for governance. The
+spec documents are written in Portuguese.
 
-- **`POST /reports` é síncrono** (~15 s). Num deploy atrás de proxy isso flerta com timeout, e a UI
-  fica sem feedback de progresso. O padrão adequado seria `202 Accepted` + polling.
-- **O trilho não registra prompt, resposta nem duração.** Você sabe *o que* o agente decidiu, não
-  quanto tempo levou nem o que exatamente foi enviado ao modelo — hoje só o tracing mostra isso.
+| Document | Contents |
+|---|---|
+| [`constitution.md`](.kiro/steering/constitution.md) | Non-negotiable principles (P1–P9) |
+| [`tech.md`](.kiro/steering/tech.md) | Stack and environment-variable contract |
+| [`structure.md`](.kiro/steering/structure.md) | Repository layout and conventions |
+| [`requirements.md`](.kiro/specs/srag-report-agent/requirements.md) | Requirements in EARS notation |
+| [`design.md`](.kiro/specs/srag-report-agent/design.md) | Architecture + 13 ADRs |
+| [`data-and-metrics.md`](.kiro/specs/srag-report-agent/data-and-metrics.md) | DATASUS columns + metric definitions |
+| [`tasks.md`](.kiro/specs/srag-report-agent/tasks.md) | Implementation plan and open items |
+
+### Where each concern is addressed
+
+| Concern | Where |
+|---|---|
+| Architecture choices | `design.md` §1–3 + ADR-01 to ADR-13 |
+| Governance and transparency | P2 · `governance/audit.py` · `GET /audit/{id}` · [`docs/auditoria.md`](docs/auditoria.md) |
+| Guardrails | P5 · SQL whitelist · enforced grounding · schema + disclaimer · API key/rate limit/CORS |
+| Tool use | Real tool calling in the news node (ADR-11) + deterministic metric and chart tools |
+| Sensitive data | P4 · anonymization in the ETL · only aggregates in the API, the LLM and the trail |
+| Clean code | Ruff · type hints · Pydantic at the boundaries · 67 tests |
+
+---
+
+## Known limitations
+
+Recorded honestly; open items are detailed in [`tasks.md`](.kiro/specs/srag-report-agent/tasks.md).
+
+- **`POST /reports` is synchronous** (~15 s). Behind a proxy this flirts with timeouts, and the UI
+  gets no progress feedback. The right pattern would be `202 Accepted` plus polling.
+- **The trail does not record prompt, response or duration.** You know *what* the agent decided, not
+  how long it took or exactly what was sent to the model; today only tracing shows that.
   Tasks T8.1–T8.3.
-- **`audit_log` não tem retenção nem imutabilidade.** Sem prazo de purga e sem `REVOKE` de
+- **`audit_log` has no retention or immutability.** No purge window and no `REVOKE` of
   `UPDATE`/`DELETE`. Task T8.4.
-- **Sem CI.** `ruff` e `pytest` dependem de alguém lembrar de rodar.
-- **Dependências sem lockfile** (`>=`), o que enfraquece a reprodutibilidade prometida em P6.
-- **Sem retry/backoff nas chamadas ao LLM**: um `429` transitório derruba direto para o fallback.
-- **Sem verificação numérica do comentário** — o grounding valida a fonte citada, não se o número
-  mencionado no texto bate com a métrica.
-- **Escopo deliberadamente fora:** autenticação de usuários, front-end customizado, streaming do
-  DATASUS e alta disponibilidade (ADR-10 e §"Fora de escopo" dos requisitos).
+- **No CI.** `ruff` and `pytest` depend on someone remembering to run them.
+- **Unpinned dependencies** (`>=`), which weakens the reproducibility promised in P6.
+- **No retry/backoff on LLM calls:** a transient `429` drops straight to the fallback.
+- **No numeric check of the commentary.** Grounding validates the cited source, not whether a number
+  in the text matches the metric.
+- **Deliberately out of scope:** user authentication, a custom front end, DATASUS streaming and high
+  availability (ADR-10 and the "out of scope" section of the requirements).

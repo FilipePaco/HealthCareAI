@@ -4,7 +4,7 @@ Contexto e regras para qualquer sessão de IA que for **implementar** este proje
 (SDD) é a fonte da verdade; este arquivo resume o essencial e aponta para ela.
 
 ## O que é o projeto
-PoC de IA Generativa para a Indicium HealthCare: um **agente orquestrador** que consulta dados reais
+PoC de IA Generativa: um **agente orquestrador** que consulta dados reais
 de SRAG (Open DATASUS) + notícias em tempo real e gera um **relatório auditável** com 4 métricas, 2
 gráficos e comentários embasados. Deploy no Railway. **É uma PoC; o conteúdo não é orientação médica.**
 
